@@ -21,8 +21,22 @@ Argument rules:
 - Free text is the task description (required).
 - `--background` runs as a Claude background job; otherwise foreground.
 - `--model <alias>` / `--effort <level>` tune the run.
-- `--resume <id>` continues a prior Claude session.
+- `--resume <id>` continues a prior Claude session; `--fresh` forces a brand-new session. They are mutually exclusive (passing both is an error).
 - Add `--json` only when you need structured output.
+
+Continuing a prior delegation:
+- If the user did NOT pass `--resume` or `--fresh`, first probe for a resumable thread from a previous delegation in this repo:
+
+  ```bash
+  node "../../scripts/claude-companion.mjs" resume-candidate --json
+  ```
+
+- If that reports `available: true`, use AskUserQuestion exactly once to ask whether to continue the prior Claude session or start fresh. Two options:
+  - `Continue previous Claude session` → re-run `task` with `--resume <candidate.sessionId>`.
+  - `Start a new session` → re-run `task` with `--fresh`.
+  - If the user's wording is clearly a follow-up ("keep going", "continue", "also do X"), put continue first and recommend it; otherwise recommend starting fresh.
+- If it reports `available: false`, do not ask — just run the task normally.
+- Only background delegations are tracked, so this resume probe only finds prior background tasks.
 
 Boundaries and authorization:
 - Only delegate when the user clearly intends to hand the task to Claude Code.

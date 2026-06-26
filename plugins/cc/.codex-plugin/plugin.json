@@ -19,8 +19,8 @@
     "capabilities": ["Interactive", "Write"],
     "defaultPrompt": [
       "Have Claude Code review my current diff.",
-      "Delegate this bug fix to Claude Code.",
-      "Ask Claude Code to implement this in the background."
+      "Have Claude Code run an adversarial review of this design.",
+      "Delegate this bug fix to Claude Code."
     ]
   }
 }
