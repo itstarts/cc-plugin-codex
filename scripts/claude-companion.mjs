@@ -1,8 +1,9 @@
 import { parseArgs } from "./lib/args.mjs";
 import { resolveRepoRoot, collectDiff } from "./lib/git.mjs";
 import { buildClaudeArgs, runClaudeForeground, startClaudeBackground } from "./lib/claude.mjs";
-import { createJob, adaptAgentsList, reconcileStatus, readJobResult } from "./lib/jobs.mjs";
+import { createJob, adaptAgentsList, reconcileStatus, readJobResult, resolveRealSessionId } from "./lib/jobs.mjs";
 import { loadState, upsertJob } from "./lib/state.mjs";
+import { transcriptPathFor } from "./lib/transcript.mjs";
 import { renderResult } from "./lib/render.mjs";
 import { ERROR_CODES, makeError, makeOk } from "./lib/errors.mjs";
 import { randomUUID } from "node:crypto";
@@ -64,8 +65,23 @@ function cmdStatus(rest, cwd) {
   const agents = spawnSync("claude", ["agents", "--json", "--all"], { cwd, encoding: "utf8" });
   const agentsMap = agents.status === 0 ? adaptAgentsList(agents.stdout) : new Map();
   const jobs = loadState(cwd).jobs.map((j) => {
-    const tr = j.transcriptPath ? readJobResult(cwd, j.id) : null;
-    return { id: j.id, kind: j.kind, status: reconcileStatus(j, agentsMap, tr), startedAt: j.startedAt };
+    // 解析真实 sessionId，确保 transcript 路径指向后台作业实际生成的文件
+    const realSid = resolveRealSessionId(j, agentsMap);
+    const tr = readJobResult(cwd, j.id, agentsMap);
+    const status = reconcileStatus(j, agentsMap, tr);
+    // 若已到终态且真实 sessionId 与存储值不同，持久化修正，避免后续请求再次查错路径
+    if (
+      (status === "completed" || status === "failed" || status === "cancelled") &&
+      realSid && realSid !== j.sessionId
+    ) {
+      upsertJob(cwd, {
+        id: j.id,
+        sessionId: realSid,
+        transcriptPath: transcriptPathFor(cwd, realSid),
+        updatedAt: Date.now(),
+      });
+    }
+    return { id: j.id, kind: j.kind, status, startedAt: j.startedAt };
   });
   return { out: makeOk({ jobs }), json };
 }
@@ -75,7 +91,10 @@ function cmdResult(rest, cwd) {
   const json = !!flags.json;
   const jobId = positional[0];
   if (!jobId) return { out: makeError(ERROR_CODES.INVALID_ARGS, "result 需要 jobId"), json };
-  return { out: readJobResult(cwd, jobId), json };
+  // 获取真实 sessionId 以定位后台作业的 transcript 文件
+  const agents = spawnSync("claude", ["agents", "--json", "--all"], { cwd, encoding: "utf8" });
+  const agentsMap = agents.status === 0 ? adaptAgentsList(agents.stdout) : new Map();
+  return { out: readJobResult(cwd, jobId, agentsMap), json };
 }
 
 function cmdCancel(rest, cwd) {

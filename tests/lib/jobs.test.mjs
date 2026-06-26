@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { adaptAgentsList, reconcileStatus } from "../../scripts/lib/jobs.mjs";
+import { adaptAgentsList, reconcileStatus, resolveRealSessionId } from "../../scripts/lib/jobs.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const agentsRaw = readFileSync(path.join(here, "..", "fixtures", "agents-list.json"), "utf8");
@@ -74,4 +74,25 @@ test("status cancelled → reconcileStatus 返回 cancelled（忽略 agents/tran
   const m = new Map([["x", { state: "done" }]]);
   const s = reconcileStatus({ status: "cancelled", shortId: "x" }, m, { ok: true });
   assert.equal(s, "cancelled");
+});
+
+test("adaptAgentsList 在 value 中暴露真实 sessionId", () => {
+  const m = adaptAgentsList(agentsRaw);
+  // 后台条目：id="ee603293", sessionId="ee603293-22dc-4767-aa2d-78204e0bdb45"
+  assert.equal(m.get("ee603293")?.sessionId, "ee603293-22dc-4767-aa2d-78204e0bdb45");
+  // 通过完整 sessionId 查也能取到
+  assert.equal(m.get("ee603293-22dc-4767-aa2d-78204e0bdb45")?.sessionId, "ee603293-22dc-4767-aa2d-78204e0bdb45");
+});
+
+test("resolveRealSessionId：agentsMap 命中时返回真实 sessionId", () => {
+  const m = new Map([
+    ["6bf4ab97", { state: "done", sessionId: "6bf4ab97-real-uuid" }],
+  ]);
+  const job = { shortId: "6bf4ab97", sessionId: "fake-uuid" };
+  assert.equal(resolveRealSessionId(job, m), "6bf4ab97-real-uuid");
+});
+
+test("resolveRealSessionId：agentsMap 无匹配时返回 job.sessionId", () => {
+  const job = { shortId: "6bf4ab97", sessionId: "fake-uuid" };
+  assert.equal(resolveRealSessionId(job, new Map()), "fake-uuid");
 });
