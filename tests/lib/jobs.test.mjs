@@ -33,3 +33,21 @@ test("agents 查不到且无 transcript → lost", () => {
   const s = reconcileStatus({ shortId: "zzz" }, new Map(), { ok: false });
   assert.equal(s, "lost");
 });
+
+test("agent state unknown + transcript ok → completed", () => {
+  const m = new Map([["sid", { state: "unknown" }]]);
+  const s = reconcileStatus({ shortId: "sid" }, m, { ok: true, result: "data" });
+  assert.equal(s, "completed");
+});
+
+test("agent state unknown + transcript fail → unknown", () => {
+  const m = new Map([["sid", { state: "unknown" }]]);
+  const s = reconcileStatus({ shortId: "sid" }, m, { ok: false });
+  assert.equal(s, "unknown");
+});
+
+test("agent state unknown + no transcript → unknown", () => {
+  const m = new Map([["sid", { state: "unknown" }]]);
+  const s = reconcileStatus({ shortId: "sid" }, m, null);
+  assert.equal(s, "unknown");
+});
