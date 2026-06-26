@@ -24,6 +24,7 @@ export function adaptAgentsList(rawJson) {
 }
 
 export function reconcileStatus(job, agentsMap, transcriptResult) {
+  if (job.status === "cancelled") return "cancelled";
   const hit = agentsMap.get(job.shortId) ?? (job.sessionId ? agentsMap.get(job.sessionId) : null);
   if (hit) {
     if (hit.state === "done" || hit.state === "completed") return "completed";

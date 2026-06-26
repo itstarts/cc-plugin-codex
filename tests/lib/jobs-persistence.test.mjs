@@ -5,8 +5,8 @@ import os from "node:os";
 import path from "node:path";
 
 process.env.HOME = mkdtempSync(path.join(os.tmpdir(), "cc-home-"));
-const { createJob, readJobResult } = await import("../../scripts/lib/jobs.mjs");
-const { findJob } = await import("../../scripts/lib/state.mjs");
+const { createJob, readJobResult, reconcileStatus } = await import("../../scripts/lib/jobs.mjs");
+const { findJob, upsertJob } = await import("../../scripts/lib/state.mjs");
 const { ERROR_CODES } = await import("../../scripts/lib/errors.mjs");
 
 const cwd = mkdtempSync(path.join(os.tmpdir(), "cc-ws-"));
@@ -43,4 +43,20 @@ test("readJobResult 找不到作业时返回 job_not_found 错误", () => {
   const result = readJobResult(cwd, "task-does-not-exist");
   assert.equal(result.ok, false);
   assert.equal(result.error.code, ERROR_CODES.JOB_NOT_FOUND);
+});
+
+test("upsertJob 持久化 cancelled 后 reconcileStatus 返回 cancelled（粘滞）", () => {
+  const job = createJob({
+    cwd,
+    kind: "task",
+    shortId: "cancel-test",
+    sessionId: "sess-cancel",
+    request: { prompt: "cancel me" }
+  });
+  upsertJob(cwd, { id: job.id, status: "cancelled", updatedAt: Date.now() });
+  const found = findJob(cwd, job.id);
+  assert.equal(found.status, "cancelled");
+  // agentsMap does NOT contain this job — simulates post-stop state
+  const status = reconcileStatus(found, new Map(), null);
+  assert.equal(status, "cancelled");
 });

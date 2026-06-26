@@ -2,7 +2,7 @@ import { parseArgs } from "./lib/args.mjs";
 import { resolveRepoRoot, collectDiff } from "./lib/git.mjs";
 import { buildClaudeArgs, runClaudeForeground, startClaudeBackground } from "./lib/claude.mjs";
 import { createJob, adaptAgentsList, reconcileStatus, readJobResult } from "./lib/jobs.mjs";
-import { loadState } from "./lib/state.mjs";
+import { loadState, upsertJob } from "./lib/state.mjs";
 import { renderResult } from "./lib/render.mjs";
 import { ERROR_CODES, makeError, makeOk } from "./lib/errors.mjs";
 import { randomUUID } from "node:crypto";
@@ -86,6 +86,9 @@ function cmdCancel(rest, cwd) {
   const job = state.jobs.find((j) => j.id === jobId);
   if (!job) return { out: makeError(ERROR_CODES.JOB_NOT_FOUND, `未找到作业 ${jobId}`), json };
   const r = spawnSync("claude", ["stop", job.shortId], { cwd, encoding: "utf8" });
+  if (r.status === 0) {
+    upsertJob(cwd, { id: jobId, status: "cancelled", updatedAt: Date.now() });
+  }
   return { out: makeOk({ jobId, cancelled: r.status === 0 }), json };
 }
 

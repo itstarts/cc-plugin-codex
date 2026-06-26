@@ -51,3 +51,9 @@ test("agent state unknown + no transcript → unknown", () => {
   const s = reconcileStatus({ shortId: "sid" }, m, null);
   assert.equal(s, "unknown");
 });
+
+test("status cancelled → reconcileStatus 返回 cancelled（忽略 agents/transcript）", () => {
+  const m = new Map([["x", { state: "done" }]]);
+  const s = reconcileStatus({ status: "cancelled", shortId: "x" }, m, { ok: true });
+  assert.equal(s, "cancelled");
+});
