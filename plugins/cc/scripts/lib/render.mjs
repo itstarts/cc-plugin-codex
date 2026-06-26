@@ -6,6 +6,8 @@ export function renderResult(payload, { json } = {}) {
     if (Array.isArray(payload.findings)) {
       lines.push(...renderFindings(payload.findings));
       if (payload.summary) lines.push("", `小结: ${payload.summary}`);
+    } else if (Array.isArray(payload.jobs)) {
+      lines.push(...renderJobs(payload.jobs));
     } else {
       lines.push(payload.result ?? "");
     }
@@ -17,6 +19,22 @@ export function renderResult(payload, { json } = {}) {
     return lines.join("\n");
   }
   return `[错误 ${payload.error?.code ?? "unknown"}] ${payload.error?.message ?? ""}`;
+}
+
+// 后台作业列表的文本展示。lost 态给出明确的人工排查引导，
+// 避免用户以为作业凭空消失。
+function renderJobs(jobs) {
+  if (!jobs.length) return ["暂无后台作业。"];
+  const lines = [`后台作业（${jobs.length}）:`];
+  let hasLost = false;
+  for (const j of jobs) {
+    lines.push(`  - ${j.id} [${j.status}] (${j.kind})`);
+    if (j.status === "lost") hasLost = true;
+  }
+  if (hasLost) {
+    lines.push("", "部分作业状态为 lost：无法从 claude agents 或 transcript 确认结果。可运行 `claude agents` 手动查看，或重新委派任务。");
+  }
+  return lines;
 }
 
 function renderFindings(findings) {

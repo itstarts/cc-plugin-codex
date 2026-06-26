@@ -100,13 +100,13 @@ function cmdReview(rest, cwd) {
   }
   if (flags.background) {
     const sessionId = randomUUID();
-    const args = buildClaudeArgs({ mode: "review", repoRoot, model: values.model, background: true, sessionId, schema });
+    const args = buildClaudeArgs({ mode: "review", repoRoot, model: values.model, effort: values.effort, background: true, sessionId, schema });
     const started = startClaudeBackground({ prompt, args, cwd });
     if (!started.ok) return { out: started, json };
     const job = createJob({ cwd, kind: "review", shortId: started.shortId, sessionId, request: { scope: values.scope, base: values.base } });
     return { out: makeOk({ jobId: job.id, shortId: started.shortId, status: "running" }), json };
   }
-  const args = buildClaudeArgs({ mode: "review", repoRoot, model: values.model, schema });
+  const args = buildClaudeArgs({ mode: "review", repoRoot, model: values.model, effort: values.effort, schema });
   return { out: attachReviewFindings(runClaudeForeground({ prompt, args, cwd, timeoutMs: 0 })), json };
 }
 
