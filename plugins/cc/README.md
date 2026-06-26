@@ -105,7 +105,7 @@ node "<plugin>/scripts/claude-companion.mjs" cancel <jobId>
 ## 安全边界
 
 - 评审走只读权限（`--permission-mode plan`）。
-- 任务走 `acceptEdits` + `--add-dir <repo>`，请求 Claude 把写操作限制在仓库内（由 Claude Code 自身强制执行，非本插件保证）。
+- 任务走 `acceptEdits` + `--add-dir <repo>`，把写操作限制在仓库内。已通过 env-gated 集成测试实测验证：仓库内写成功，仓库外写（绝对路径、符号链接逃逸）被 Claude Code 拒绝（见 `tests/e2e/write-boundary.e2e.test.mjs`）。该边界由 Claude Code 自身强制执行，本插件不做二次沙箱兜底。
 
 ## 实现说明
 
@@ -117,7 +117,13 @@ node "<plugin>/scripts/claude-companion.mjs" cancel <jobId>
 ## 测试
 
 ```bash
-cd plugins/cc && node --test     # 98 个单元/契约/fixture 测试
+cd plugins/cc && node --test     # 100 个单元/契约/fixture 测试（e2e 默认跳过）
 ```
 
-端到端冒烟与真实 Codex 会话验证记录见 `tests/SMOKE.md`。
+写边界 env-gated 集成测试默认跳过，需真实 `claude`（已登录）才运行：
+
+```bash
+cd plugins/cc && CC_PLUGIN_E2E=1 node --test tests/e2e/write-boundary.e2e.test.mjs
+```
+
+它在受控临时仓库里真实委派可写任务，断言写操作被限制在仓库内（不进 CI）。端到端冒烟与真实 Codex 会话验证记录见 `tests/SMOKE.md`。

@@ -25,12 +25,11 @@ Codex 收尾前自动调用 Claude 做一次只读评审,P0/P1 拦截(`decision:
 - `cmdReview`(前台/后台)与 `cmdResult`(review 作业)解析出 `findings`/`summary`;render 层按 severity 排序展示,`--json` 暴露原始字段。
 - 解析失败时回退自由文本,保证健壮性。测试 82 通过。
 
-### A3. 写边界 env-gated 集成测试
-见 spec §9.3。实测 `--permission-mode acceptEdits + --add-dir <repo>` 是否真把写限制在仓库内。
-- 覆盖:符号链接、嵌套仓库、cwd 外的生成文件、工具权限组合。
-- 由环境变量(如 `CC_PLUGIN_E2E=1`)开启,默认跳过,不进 CI。
-- 验证通过后,才可把文档措辞从"请求 Claude 限制"升级为"已验证限制在仓库内"。
-- 工作量:中。对外宣称安全性时再做。
+### A3. 写边界 env-gated 集成测试 ✅ 已完成
+见 spec §9.3。实测 `--permission-mode acceptEdits + --add-dir <repo>` 把写限制在仓库内。
+- 测试 `plugins/cc/tests/e2e/write-boundary.e2e.test.mjs`:在受控临时仓库真实委派可写任务,覆盖仓库内写、仓库外绝对路径、符号链接逃逸到 sibling 目录。
+- 由 `CC_PLUGIN_E2E=1` 开启,默认跳过,不进 CI。实测通过(真实 claude,约 39s):仓库内写成功,仓库外写被拒。
+- 据此 spec §7.2 与 README 措辞已从"请求 Claude 限制"升级为"已验证限制在仓库内"。
 
 ## B. 健壮性（Codex 评审记录的延后项）
 
@@ -48,5 +47,5 @@ Codex 收尾前自动调用 Claude 做一次只读评审,P0/P1 拦截(`decision:
 
 ## 推荐优先级
 
-先做 ~~A2（json-schema,小而高价值）~~（已完成）→ ~~C1（确认 CI）~~（已完成）→ ~~A1（Stop hook,v1.1 核心特性）~~（已完成）。
-A3 写边界测试在需要对外宣称安全性时再做。B 类按需,锦上添花。
+先做 ~~A2（json-schema,小而高价值）~~（已完成）→ ~~C1（确认 CI）~~（已完成）→ ~~A1（Stop hook,v1.1 核心特性）~~（已完成）→ ~~A3（写边界验证）~~（已完成）。
+B 类按需,锦上添花。

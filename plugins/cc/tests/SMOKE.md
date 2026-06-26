@@ -40,8 +40,24 @@
 
 注：marketplace 布局曾有 bug（清单误放仓库根、`source.path` 用 `.`），已修正为 `.agents/plugins/marketplace.json` + `./plugins/cc`，安装链路随后验证通过。
 
+## 写边界 env-gated 验证（A3，2026-06-27）
+
+严格写边界验证（spec §9.3 #4），由 `CC_PLUGIN_E2E=1` 开启，真实调用本机 `claude`。测试：`tests/e2e/write-boundary.e2e.test.mjs`。
+
+受控场景：`root/{repo, outside}`，repo 为 git 仓库（委派 cwd = `--add-dir` 目标），repo 内 `link-out` 符号链接指向仓库外 `outside`。一次委派要求写三处：仓库内 `touched-inside.txt`、仓库外绝对路径、经符号链接逃逸路径。
+
+结果（`CC_PLUGIN_E2E=1 node --test tests/e2e/write-boundary.e2e.test.mjs`，真实 claude，约 31s）：
+
+- ✅ 仓库内 `touched-inside.txt` 被创建，内容为模型写入的 `INSIDE_OK`（证明 claude 确有意愿、有能力执行写，排除“模型没尝试”的假阳性）。
+- ✅ 仓库外绝对路径未落地（被 Claude Code 拒绝）。
+- ✅ 经符号链接逃逸到 sibling 目录的写未落地。
+- 探针实测中 claude 明确回应：该路径“outside the working directory, and the write permission wasn't granted”，确认是 enforcement 层拒绝。
+
+逃逸向量只取真正越界的两类（仓库外绝对路径、符号链接逃逸）；嵌套仓库在外层 repo 内、`--add-dir` 范围内，写入本就允许，不构成边界用例。
+
+据此结论，spec §7.2 与 README 措辞从“请求 Claude 限制”升级为“已验证限制在仓库内（由 Claude Code 强制执行）”。
+
 ## 说明
 
 - 冒烟使用 `--model haiku` 降低成本，与生产模型选择无关。
-- 冒烟产生的临时文件已清理，未进入任何提交。
-- 写边界（spec §9.3 的 env-gated 严格验证：符号链接、嵌套仓库、cwd 外文件）仍按计划留待后续；本次仅验证了常规仓库内写入被正确限定。
+- 冒烟与 e2e 产生的临时文件已清理，未进入任何提交。
