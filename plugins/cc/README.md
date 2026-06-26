@@ -16,29 +16,31 @@
 
 ## 安装
 
-本仓库本身就是一个 Codex 本地 marketplace：marketplace 清单在 `.agents/plugins/marketplace.json`，插件在 `plugins/cc/`。Codex 要求 marketplace 清单位于 `<根>/.agents/plugins/marketplace.json`，且插件目录通过 `source.path`（如 `./plugins/cc`，相对 marketplace 根）引用。
+本仓库本身就是一个 Codex marketplace：marketplace 清单在 `.agents/plugins/marketplace.json`，插件在 `plugins/cc/`。Codex 要求 marketplace 清单位于 `<根>/.agents/plugins/marketplace.json`，且插件目录通过 `source.path`（如 `./plugins/cc`，相对 marketplace 根）引用。
 
-把**仓库根**（不是 `plugins/cc`）作为 marketplace 加入并安装插件：
+推荐直接从 GitHub 安装（无需 clone）：
 
 ```bash
-codex plugin marketplace add <仓库根路径>     # 例如 /path/to/cc-plugin-codex
-codex plugin add cc@itstarts-local            # 安装并启用
-codex plugin list | grep cc                   # 确认: cc@itstarts-local  installed, enabled  0.3.0
+codex plugin marketplace add itstarts/cc-plugin-codex   # 远程拉取本仓库作为 marketplace
+codex plugin add cc@itstarts                             # 安装并启用
+codex plugin list | grep cc                              # 确认: cc@itstarts  installed, enabled  0.3.0
 ```
 
-或手动在 `~/.codex/config.toml` 配置：
+marketplace 的名字是 `itstarts`（来自 `marketplace.json` 的 `name`），所以插件 id 始终是 `cc@itstarts`。
+
+从本地副本安装（开发/离线场景）：把上面的 `itstarts/cc-plugin-codex` 换成 clone 后的**仓库根目录绝对路径**（不是 `plugins/cc`），例如 `codex plugin marketplace add /path/to/cc-plugin-codex`。或手动在 `~/.codex/config.toml` 配置：
 
 ```toml
-[marketplaces.itstarts-local]
-path = "<仓库根路径>"
+[marketplaces.itstarts]
+path = "<clone 后的仓库根目录绝对路径>"
 
-[plugins."cc@itstarts-local"]
+[plugins."cc@itstarts"]
 enabled = true
 ```
 
 安装后重启 Codex 使插件生效。
 
-> 更新插件：本地 marketplace 不能用 `codex plugin marketplace upgrade`（那只适用于 Git marketplace）。改用 `codex plugin remove cc@itstarts-local && codex plugin add cc@itstarts-local` 刷新已安装的缓存副本。
+> 更新插件：远程安装的是 Git marketplace，用 `codex plugin marketplace upgrade itstarts` 拉取最新版本。本地路径安装的副本不支持 `upgrade`，改用 `codex plugin remove cc@itstarts && codex plugin add cc@itstarts` 刷新缓存副本。
 
 ## 用法
 
@@ -126,7 +128,7 @@ node "<plugin>/scripts/claude-companion.mjs" cancel <jobId>
 
 - **需要 Claude 账号吗？** 需要。插件调用本机 `claude` CLI，它必须已安装并完成登录（`claude --version` 能用）。
 - **数据会外发吗？** 会。`claude` 在本机运行，但推理在 Anthropic 服务端完成，prompt 与所选上下文会发往该服务（见下方「数据外发说明」）。
-- **怎么更新插件？** 本地 marketplace 用 `codex plugin remove cc@itstarts-local && codex plugin add cc@itstarts-local` 刷新缓存副本（不能用 `marketplace upgrade`，那只适用 Git marketplace）。
+- **怎么更新插件？** 远程安装用 `codex plugin marketplace upgrade itstarts` 拉最新；本地路径安装的副本用 `codex plugin remove cc@itstarts && codex plugin add cc@itstarts` 刷新。
 - **评审会改我的代码吗？** 不会。`cc:review` 走只读权限；只有 `cc:delegate` 才允许 Claude 写文件，且限定在仓库内。
 - **skill 没被触发怎么办？** 用 `/skills` 显式选择 `cc:review` / `cc:delegate`，或在请求里明确点名「Claude Code」。
 
