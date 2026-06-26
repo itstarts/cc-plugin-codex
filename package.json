@@ -1,0 +1,19 @@
+{
+  "name": "cc-plugin-codex",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Codex plugin (cc) that lets OpenAI Codex delegate code review and coding tasks to the local Claude Code CLI.",
+  "license": "Apache-2.0",
+  "author": "itstarts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/itstarts/cc-plugin-codex.git"
+  },
+  "engines": {
+    "node": ">=18.18.0"
+  },
+  "scripts": {
+    "test": "node --test \"plugins/cc/tests/**/*.test.mjs\""
+  }
+}

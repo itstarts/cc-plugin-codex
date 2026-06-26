@@ -47,6 +47,36 @@ enabled = true
 - 评审当前改动：说「让 Claude Code 评审一下当前改动」即可命中 `cc:review`。可附 `--base main --scope branch` 选择 diff 范围，或后接聚焦点文本。
 - 委派任务：说「把这个任务交给 Claude Code：……」命中 `cc:delegate`。可附 `--background` 走后台、`--model <alias>`、`--effort <level>`。
 
+## 典型流程
+
+发版前评审当前改动：
+
+> 让 Claude Code 评审一下当前改动
+
+把一个具体问题交给 Claude Code 修：
+
+> 把这个任务交给 Claude Code：修复 src/foo.js 里空指针导致的崩溃
+
+启动一个耗时任务走后台，随后查看：
+
+> 用后台方式让 Claude Code 实现这个功能：……
+
+然后在会话里说「查一下后台作业状态」「取一下那个作业的结果」，或经 companion：
+
+```bash
+node "<plugin>/scripts/claude-companion.mjs" status --json
+node "<plugin>/scripts/claude-companion.mjs" result <jobId> --json
+node "<plugin>/scripts/claude-companion.mjs" cancel <jobId>
+```
+
+## 常见问题
+
+- **需要 Claude 账号吗？** 需要。插件调用本机 `claude` CLI，它必须已安装并完成登录（`claude --version` 能用）。
+- **数据会外发吗？** 会。`claude` 在本机运行，但推理在 Anthropic 服务端完成，prompt 与所选上下文会发往该服务（见下方「数据外发说明」）。
+- **怎么更新插件？** 本地 marketplace 用 `codex plugin remove cc@itstarts-local && codex plugin add cc@itstarts-local` 刷新缓存副本（不能用 `marketplace upgrade`，那只适用 Git marketplace）。
+- **评审会改我的代码吗？** 不会。`cc:review` 走只读权限；只有 `cc:delegate` 才允许 Claude 写文件，且限定在仓库内。
+- **skill 没被触发怎么办？** 用 `/skills` 显式选择 `cc:review` / `cc:delegate`，或在请求里明确点名「Claude Code」。
+
 ## 数据外发说明
 
 `claude` 虽在本机运行，但推理在 Anthropic 服务端完成：prompt 与所选仓库上下文会发送到外部服务。「本机 CLI」不等于「数据不外发」。请在知情前提下使用，并只发送必要上下文。

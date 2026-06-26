@@ -42,3 +42,5 @@ cd plugins/cc && node --test       # 单元 / 契约 / fixture 测试
 ```
 
 设计文档：[docs/superpowers/specs/](docs/superpowers/specs/)　实现计划：[docs/superpowers/plans/](docs/superpowers/plans/)　验证记录：[plugins/cc/tests/SMOKE.md](plugins/cc/tests/SMOKE.md)
+
+> `docs/superpowers/` 下是开发期的历史设计 spec 与实现 plan，记录设计思路，**不是安装/使用文档**。安装与用法以本文件和 [plugins/cc/README.md](plugins/cc/README.md) 为准。
