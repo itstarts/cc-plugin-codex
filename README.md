@@ -1,6 +1,6 @@
 # cc-plugin-codex
 
-一个 Codex 本地 **marketplace 仓库**，提供 `cc` 插件 —— 让 OpenAI Codex 把代码评审（只读）和编码任务（可写）委派给本机的 Claude Code（`claude` CLI）。
+一个 Codex **marketplace 仓库**（支持远程 GitHub 安装或本地路径安装），提供 `cc` 插件 —— 让 OpenAI Codex 把代码评审（只读）和编码任务（可写）委派给本机的 Claude Code（`claude` CLI）。
 
 它是 [`openai/codex-plugin-cc`](https://github.com/openai/codex-plugin-cc)（让 Claude Code 调用 Codex）的镜像方向。
 
@@ -20,13 +20,18 @@ docs/superpowers/                  # 设计 spec 与实现 plan
 
 需要本机已安装并登录 Codex 与 Claude Code（`claude`）CLI，以及 Node.js v18+。
 
+直接从 GitHub 安装（无需 clone）：
+
 ```bash
-codex plugin marketplace add <本仓库根路径>
-codex plugin add cc@itstarts-local
-codex plugin list | grep cc        # 期望: installed, enabled
+codex plugin marketplace add itstarts/cc-plugin-codex   # 远程拉取本仓库作为 marketplace
+codex plugin add cc@itstarts                              # 安装并启用 cc 插件
+codex plugin list | grep cc                              # 期望: installed, enabled
 ```
 
 安装后重启 Codex，在会话里说「让 Claude Code 评审一下当前改动」即可触发。
+
+> marketplace 的名字是 `itstarts`（来自仓库内 `marketplace.json`），所以插件 id 是 `cc@itstarts`，远程或本地安装都一样。
+> 想从本地副本安装（开发/离线场景），把 `itstarts/cc-plugin-codex` 换成 clone 后的仓库根目录绝对路径即可，例如 `codex plugin marketplace add /path/to/cc-plugin-codex`。
 
 完整安装、用法、安全边界与数据外发说明见 **[plugins/cc/README.md](plugins/cc/README.md)**。
 

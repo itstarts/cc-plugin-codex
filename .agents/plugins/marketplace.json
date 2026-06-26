@@ -1,7 +1,7 @@
 {
-  "name": "itstarts-local",
+  "name": "itstarts",
   "interface": {
-    "displayName": "itstarts Local Plugins"
+    "displayName": "itstarts Plugins"
   },
   "plugins": [
     {
