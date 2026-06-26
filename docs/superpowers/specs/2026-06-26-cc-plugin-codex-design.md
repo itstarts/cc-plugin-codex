@@ -1,9 +1,18 @@
 # `cc` 插件设计文档：让 Codex 调用 Claude Code
 
-- 状态：草案，待用户评审
+- 状态：草案 v2，已纳入 Codex 外部评审意见
 - 日期：2026-06-26
 - 仓库目录：`cc-plugin-codex`
 - 插件名（Codex 内）：`cc`
+
+> 评审修订记录（v2）：本版根据一次 Codex 外部设计评审更新，逐条处理了 8 条意见：
+> 后台状态当 best-effort 并叠加插件自有状态机（#1）、transcript 改为启动时解析并存实际路径 +
+> setup 探测 + 防御解析 + 版本不符报错（#2）、修正安全模型的外发措辞并加入外发知情（#3）、
+> 写边界改为"请求 Claude 限制"并补边界测试（#4）、hook 安装幂等/备份/冲突检测（#5）、
+> 删除与"复用原生后台"矛盾的 `task-worker`（#6）、测试补 fixture + env-gated 集成测试（#7）、
+> Stop hook 降到 v1.1（#8）。
+> 说明：#1 经本地实测部分修正——后台任务的 `claude agents --json` 记录**确实带 `state` 字段**
+> （前台 interactive 记录才没有），故仍用 agents 状态，但叠加插件自有持久化与 `unknown/lost` 兜底。
 
 ## 1. 目标与范围
 
@@ -34,7 +43,7 @@
 | 运行时语言 | Node.js（`.mjs`，零依赖） |
 | 任务写权限 | 评审只读 / 任务可写 |
 | 插件名 | `cc`（skill 为 `cc:review`、`cc:delegate`） |
-| Stop hook 评审门禁 | 做，但作为可选组件由 `setup` 安装到 `~/.codex` 级别 |
+| Stop hook 评审门禁 | **降到 v1.1**；v1 先把 review/delegate 跑稳，再加 hook 门禁 |
 | 语言 | skill 用英文 / 文档（README、spec）用中文 |
 
 ## 2. 背景调研结论
@@ -56,12 +65,13 @@
 ### 2.3 Claude Code 的 headless 能力（被调用侧，已实测验证）
 
 - 前台：`claude -p --output-format json` 返回单一干净 JSON 结果；`--output-format stream-json --verbose` 返回逐事件 JSONL。
-- 后台：`claude -p --background` 返回短 job id；`claude agents --json --all` 查 `state`（`done` / 运行中等）；`claude stop <id>` 取消；`claude logs <id>` 在任务存活时可读，**任务结束后日志消失**。
-- 最终结果可从 transcript 读取：`~/.claude/projects/<cwd-slug>/<sessionId>.jsonl`（已实测文件存在）。`<cwd-slug>` 是 cwd 路径把 `/` 替换为 `-`。
+- 后台：`claude -p --background` 返回短 job id；`claude agents --json --all` 可查作业 `state`（实测后台作业记录带 `state`，如 `done`；但前台 interactive 记录无 `state`，故按 best-effort 对待）；`claude stop <id>` 取消；`claude logs <id>` 在任务存活时可读，**任务结束后日志消失**。
+- 最终结果可从 transcript 读取：实测路径形如 `~/.claude/projects/<cwd-slug>/<sessionId>.jsonl`，`<cwd-slug>` 约定为 cwd 把 `/` 替换为 `-`。**此路径与 JSONL 事件结构是 Claude Code 私有实现细节，仅一次实测验证**，不能当稳定 API；落地时以"启动时探测 + 存实际路径 + 防御解析"处理（见 §6.2、§6.4）。
 - `--session-id <uuid>`：指定会话 ID，使 transcript 路径可确定性定位。
 - `--resume <id>` / `--continue`：续接会话。
-- 权限：`--permission-mode plan`（只读）、`acceptEdits`（可写）、`bypassPermissions` 等；`--add-dir <dir>` 扩大可访问目录；`--tools ""` 禁用工具。
+- 权限：`--permission-mode plan`（只读）、`acceptEdits`（可写）、`bypassPermissions` 等；`--add-dir <dir>` 扩大可访问目录；`--tools ""` 禁用工具。**注意**：这些是"请求 Claude 限制访问"的开关，实际写边界由 Claude Code 自身强制执行，本插件不替它兜底（见 §7）。
 - 模型：`--model opus|sonnet|haiku|<full-name>`；`--effort low|medium|high|xhigh|max`。
+- **数据流**：`claude` 是本机进程，但它会把 prompt 与所选仓库上下文发送到 Anthropic 服务完成推理。"本机 CLI"不等于"数据不外发"（见 §7 安全模型）。
 
 > 这点与参考插件不同：参考插件因 Codex headless 无原生后台而自建 broker；本插件因 Claude Code **原生**提供后台作业管理，后台层显著更薄。
 
@@ -98,7 +108,7 @@ Codex 主控
 
 运行时拆成小而专的模块，便于独立测试：
 
-- `claude-companion.mjs`：子命令分发入口（`setup`/`review`/`task`/`status`/`result`/`cancel`/`task-worker`）。
+- `claude-companion.mjs`：子命令分发入口（`setup`/`review`/`task`/`status`/`result`/`cancel`）。
 - `lib/args.mjs`：CLI 参数解析（路由标志 vs prompt 文本）。
 - `lib/claude.mjs`：构建并 spawn `claude` 命令，解析输出。**唯一**与 `claude` 二进制交互的模块。
 - `lib/jobs.mjs`：后台作业生命周期（创建、查询、取消、读结果）。
@@ -125,8 +135,8 @@ Codex 主控
 
 - 触发：用户要求把编码任务（调查、修复、实现）交给 Claude Code 做。
 - 参数：`--background`、`--model`、`--effort`、`--resume`、`--fresh`。
-- 行为：companion 以 `--permission-mode acceptEdits` + `--add-dir <repo>` 调 Claude，允许在仓库内改文件。
-- 授权门禁（轻量）：skill 要求用户已明确表达"交给 Claude Code 去做"的委派意图才下发可写任务。风险点是"误写工作区"而非"外发泄露"（Claude 本机本地运行、用户已登录），因此不照搬重外发授权仪式。
+- 行为：companion 以 `--permission-mode acceptEdits` + `--add-dir <repo>` 调 Claude，**请求** Claude 把改动限制在仓库内（实际边界由 Claude Code 强制，见 §7）。
+- 授权门禁（轻量）：skill 要求用户已明确表达"交给 Claude Code 去做"的委派意图才下发可写任务。这里有两类风险：一是"误写工作区"（Claude 自动改文件），二是"上下文外发到 Anthropic 服务"（prompt 与仓库上下文用于推理）。门禁同时覆盖这两点——既确认用户要 Claude 动手，也确认用户知道内容会发往外部服务。
 - 命令：`node ${CODEX_PLUGIN_ROOT}/scripts/claude-companion.mjs task "<args>"`。
 
 ### 4.2 内部 skills（3 个，不可被用户直接调用）
@@ -141,15 +151,16 @@ Codex 主控
 
 | 子命令 | 作用 |
 |---|---|
-| `setup` | 检查 `claude` 安装/登录状态；可选开关评审门禁、安装 Stop hook。支持 `--json`。 |
+| `setup` | 检查 `claude` 安装/登录状态；探测 transcript 契约并记入配置。支持 `--json`。（v1.1 起追加：安装/卸载可选 hook） |
 | `review` | 运行只读评审。支持 `--base`、`--scope`、focus 文本、`--background`、`--wait`。 |
 | `task` | 运行可写任务委派。支持 `--background`、`--model`、`--effort`、`--resume`、`--fresh`。 |
 | `status` | 查后台作业状态（读 `claude agents --json --all` + 本地作业索引）。 |
 | `result` | 取某作业最终结果（读 transcript）。支持 `--json`。 |
 | `cancel` | 取消后台作业（`claude stop <id>`）。 |
-| `task-worker` | 内部子命令，后台 worker 进程入口。 |
 
 不做 `transfer`。
+
+> **为何没有 `task-worker`**：参考插件的 `task-worker` 是它自建 broker 架构下的 detached worker 进程，负责后台任务的真正执行与生命周期。本插件**复用 Claude Code 原生后台**（`claude --background` 自己 detach 并由 `claude agents`/`stop` 管理），所以 companion 不持有后台进程——`task --background` 调用后即返回，由 Claude Code 拥有执行、取消、日志。没有需要 companion 自己托管的 worker，因此删去 `task-worker`，与"不自建 broker、复用原生后台"的非目标保持一致。
 
 ## 6. 后台作业与状态
 
@@ -172,50 +183,105 @@ claude -p --session-id <uuid> --background \
   --permission-mode <mode> --add-dir <repo> \
   "<prompt>"
 → 返回短 job id
-→ 记录作业 { jobId, claudeShortId, claudeSessionId(uuid), cwd, request, status, startedAt }
+→ 记录作业 { jobId, claudeShortId, claudeSessionId(uuid), cwd, transcriptPath, request, status, startedAt, updatedAt }
 ```
 
-- `status`：读 `claude agents --json --all`，按 short id / sessionId 匹配 `state`，结合本地作业索引展示。
-- `result`：读 transcript `~/.claude/projects/<cwd-slug>/<uuid>.jsonl`，取最终 assistant/result 消息 + 改动文件，渲染。
-- `cancel`：`claude stop <shortId>`，更新本地作业状态。
+- **启动时即解析并存储 transcript 实际路径**（`transcriptPath`），不在 `result` 时才按规则现推。这样即便后续 slug 规则或路径约定变化，已存的路径仍可用。
+- `status`、`result`、`cancel` 的状态判定见 §6.3 的状态机，transcript 读取契约见 §6.4。
 
-### 6.3 状态持久化
+### 6.3 作业状态机（agents 当 best-effort + 插件自有状态）
+
+不把 `claude agents --json` 当唯一真相源，而是插件维护自己的状态机，agents 输出作为信号之一：
+
+- 插件自有状态：`queued` → `running` → `completed` / `failed` / `cancelled`，加兜底态 `unknown`、`lost`。
+- 状态来源融合：
+  - 启动成功 → `running`，持久化作业记录。
+  - `status` 时读 `claude agents --json --all`：实测**后台作业记录带 `state`**（如 `done`），据此推进到 `completed`；按 `claudeShortId` / `claudeSessionId` 匹配。
+  - agents 列表里查不到该作业，且 transcript 已有终结消息 → `completed`（结果可取）。
+  - agents 列表查不到、transcript 也无终结消息、进程不存在 → `lost`（无法确认结果，明确报告而非假装完成）。
+  - agents 输出结构与预期不符（字段缺失/格式变化）→ 标 `unknown`，降级为"请用户手动 `claude agents` 查看"，不静默当成功。
+- 为 agents 输出定义一个**适配层**：集中解析已知字段（`state`/`sessionId`/`pid` 等），结构变化时只改适配层。
+- `cancel`：`claude stop <shortId>`，成功后置 `cancelled`；stop 失败按 `unknown` 处理并提示。
+
+### 6.4 transcript 读取契约（防御式）
+
+transcript 路径与 JSONL 结构是 Claude Code 私有细节，按以下方式降低耦合：
+
+- **路径**：优先用作业记录里启动时存下的 `transcriptPath`；缺失时才按 `~/.claude/projects/<cwd-slug>/<uuid>.jsonl` 规则现推，并对 cwd 做 realpath 归一（处理符号链接、worktree 移动）。
+- **探测**：`setup` 阶段用一次极小的真实/dry 调用确认"当前 `claude` 版本下 transcript 路径与最终消息结构成立"，把契约状态记入配置。契约不成立时，后台 `result` 明确返回 `transcript_unavailable` 并提示用户用 `claude agents`/`logs` 手动查看，而不是吐空结果。
+- **解析**：逐行容错解析 JSONL，跳过损坏行；只认已知的终结事件类型（最终 assistant/result 消息）与文件改动记录；拿不到就报 `transcript_unavailable`，不猜测、不拼接半成品。
+- **版本不符**：结构与预期契约偏离时返回明确的"不支持的 Claude 版本/格式"错误，引导用户升级插件或反馈，不做静默降级。
+
+### 6.5 状态持久化
 
 - 按 workspace 根路径 hash 分目录（镜像参考插件 `state.mjs` 思路）。
-- 存：作业列表 + 配置（评审门禁开关、Stop hook 状态）。
+- 存：作业列表（含 `transcriptPath`、状态机当前态）+ 配置（transcript 契约探测结果；v1.1 起含 hook 状态）。
 - 位置：优先 `~/.codex/.cc-plugin/state/<workspace-slug>-<hash>/`，回退 `os.tmpdir()`。
 - 保留最近 N 条作业（如 50），自动清理过旧记录。
 
 ## 7. 安全模型
 
-- **评审**：`--permission-mode plan`，可读不可写，活动限定在仓库内。
-- **委派任务**：默认可写，用 `--permission-mode acceptEdits` + `--add-dir <repo>` 限定写范围；skill 层要求用户已明确表达委派意图。
-- **`setup`**：检查 `claude` 是否安装、是否已登录（未登录时提示用户本机登录，不请求沙箱/网络升级来做 auth）。
+### 7.1 数据外发知情
+
+`claude` 虽是本机进程，但推理在 Anthropic 服务端完成：prompt 与所选仓库上下文会**发送到外部服务**。因此本插件不能声称"数据不外发"。
+
+- review 与 delegate 都需要用户对"把内容发给 Claude Code（经 Anthropic 服务）"知情。skill 文档需明确说明可能外发的内容范围（diff、指定文件、任务描述）。
+- 只收集最小必要上下文：评审用 diff/指定文件，任务用任务描述 + 必要范围，不做全仓库无差别外发。
+- 不打印、不写日志、不提交凭据；prompt 通过参数/stdin 传给本机 `claude` 进程，不再转发给 Anthropic 以外的第三方。
+
+### 7.2 写边界（请求而非保证）
+
+- **评审**：`--permission-mode plan`，请求 Claude 只读不写。
+- **委派任务**：`--permission-mode acceptEdits` + `--add-dir <repo>`，请求 Claude 把写操作限制在仓库内。
+- **关键认知**：这些标志是"请求 Claude 限制访问"，**实际写边界由 Claude Code 自身强制执行**，本插件不替它做二次沙箱兜底。spec 不假设它绝对不越界。
+- 边界用例需在实现期实测验证（见 §9 测试）：符号链接、嵌套仓库、cwd 外的生成文件、工具权限组合。验证前，文档一律用"请求 Claude 限制"措辞，不写"保证限制在仓库内"。
+
+### 7.3 setup 与失败处理
+
+- **`setup`**：检查 `claude` 是否安装、是否已登录（未登录时提示用户本机登录，不请求沙箱/网络升级来做 auth）；并探测 transcript 契约是否成立（见 §6.4）。
 - **不引入兜底降级**：调用失败、未登录、解析失败都返回结构化错误码，不静默吞掉、不返回降级结果。
-- **敏感信息**：不打印、不写日志、不提交凭据。prompt 内容通过参数/stdin 传给本机 `claude`，不外发第三方。
 
-错误码（初版）：`missing_cli`（无 `claude`）、`auth_required`（需登录）、`invalid_json`（结果解析失败）、`job_not_found`、`nonzero_exit`、`timeout`（仅显式有限等待时）。
+错误码（初版）：`missing_cli`（无 `claude`）、`auth_required`（需登录）、`invalid_json`（结果解析失败）、`job_not_found`、`transcript_unavailable`（transcript 路径/结构不符合预期契约）、`nonzero_exit`、`timeout`（仅显式有限等待时）。
 
-## 8. Hooks（可选组件）
+## 8. Hooks（v1.1，可选组件）
 
-- 形态：**不放进 plugin manifest**（规避 Codex 校验器拒绝 `hooks` 字段的问题）。由 `setup` 帮用户安装到 `~/.codex/hooks.json` 或 `config.toml [hooks]`。
+**v1 不实现 hooks**。先把 review/delegate 的前台+后台生命周期跑稳，再在 v1.1 加入 hook 门禁，降低初版风险面。本节为 v1.1 的设计预案。
+
+- 形态：**不放进 plugin manifest**（规避 Codex 校验器拒绝 `hooks` 字段的问题）。由 `setup` 帮用户安装到用户/项目级 `~/.codex/hooks.json` 或 `config.toml [hooks]`。
 - 内容：
   - `session-lifecycle` hook：会话开始/结束时维护作业索引、清理本会话遗留后台作业。
   - `stop-review-gate` hook：镜像参考插件的"收尾前让对方评审"门禁。Codex 收尾前调用 Claude 做一次评审，`ALLOW:` 放行 / `BLOCK:` 拦截并说明原因。
+- **安装安全（因为改的是全局/项目级配置，必须做到）**：
+  - 幂等：重复安装不产生重复条目；提供对称的卸载，能干净移除本插件写入的内容。
+  - 备份：写入前备份原 `hooks.json` / `config.toml`。
+  - 所有权标记：本插件写入的 hook 条目带可识别标记（如固定 id/注释），卸载只动自己的条目，不碰用户已有 hook。
+  - 冲突检测：发现同事件已有用户 hook 时，提示并避免覆盖，必要时让用户确认。
+  - 优先项目级 opt-in：能放项目级就不污染全局。
 - 默认关闭，用户通过 `setup` 显式开启。
 
 ## 9. 测试策略
 
-用 `node:test`（零依赖）覆盖纯逻辑：
+分三层。重点是：最脆弱的契约（CLI 输出、后台状态、transcript 结构、写边界）恰恰不能只靠手动 smoke，要用 fixture 固定下来。
+
+### 9.1 纯逻辑单测（`node:test`，零依赖，默认运行）
 
 - 参数解析：路由标志 vs prompt 文本的切分。
 - claude 命令拼装：评审走 `plan`、任务走 `acceptEdits`、`--add-dir`、`--model`、`--background` 等组合正确。
-- 作业状态读写：创建、更新、查询、清理。
-- transcript 解析：从 JSONL 取最终消息与改动文件；处理空文件/损坏行。
-- 错误分类：各错误码触发条件。
+- 作业状态机：`queued/running/completed/failed/cancelled/unknown/lost` 各转换；agents 信号 + transcript 信号融合判定。
+- 错误分类：各错误码（含 `transcript_unavailable`）触发条件。
 - skill 文档契约：SKILL.md frontmatter 完整、关键段落未截断、引用的脚本存在。
 
-不在自动化测试里真实调用 `claude`（避免外部依赖与登录态）；真实调用通过手动 smoke + dry-run 验证。
+### 9.2 Fixture 契约测试（用真实样本固定外部契约，默认运行）
+
+- 用真实采集的 `claude agents --json --all` 输出做 fixture，喂给适配层，断言能正确解析后台/前台记录、缺字段时降级为 `unknown`。
+- 用真实 transcript JSONL 样本（含正常、空文件、损坏行、无终结消息）做 fixture，断言解析取到最终消息/改动文件，异常时报 `transcript_unavailable`。
+- 这些 fixture 即是"契约快照"：将来 Claude 改了格式，这层测试先红，提示更新适配层。
+
+### 9.3 可选集成测试（env-gated，默认跳过）
+
+- 由环境变量（如 `CC_PLUGIN_E2E=1`）开启，真实调用本机 `claude`：前台只读评审、后台任务起停、transcript 落地路径与结构。
+- **写边界用例（#4 必测）**：在受控临时仓库里委派可写任务，断言 Claude 的写操作是否被 `acceptEdits + --add-dir` 限制在仓库内；覆盖符号链接、嵌套仓库、cwd 外生成文件、工具权限。结果决定文档措辞能否从"请求限制"升级为"已验证限制"。
+- 不进 CI 默认流水线（依赖登录态与网络）；作为本地/手动验证手段。
 
 ## 10. 目录结构
 
@@ -242,12 +308,13 @@ cc-plugin-codex/
       git.mjs
       fs.mjs
     hooks/
-      session-lifecycle.mjs      # 可选安装
-      stop-review-gate.mjs       # 可选安装
+      session-lifecycle.mjs      # v1.1，可选安装
+      stop-review-gate.mjs       # v1.1，可选安装
   schemas/
     review-output.schema.json
   tests/
     *.test.mjs
+    fixtures/                    # 真实 agents --json / transcript JSONL 样本
   README.md
   LICENSE
 ```
@@ -255,11 +322,12 @@ cc-plugin-codex/
 ## 11. 实现阶段建议
 
 1. **骨架**：`plugin.json` + `marketplace.json` + 目录结构 + `args.mjs` + companion 分发入口。
-2. **前台评审**：`claude.mjs`（构建/spawn/解析）+ `git.mjs` + `cc:review` skill + `review` 子命令，跑通只读评审。
-3. **前台任务**：`cc:delegate` skill + `task` 子命令，跑通可写委派。
-4. **后台作业**：`jobs.mjs` + `state.mjs` + `transcript.mjs` + `status`/`result`/`cancel`/`task-worker`。
-5. **内部 skills**：`claude-cli-runtime` / `claude-result-handling` / `claude-prompting`。
-6. **setup 与 hooks**：`setup` 子命令 + 可选 hooks 安装。
-7. **测试与文档**：`node:test` 套件 + README。
+2. **setup 与契约探测**：`setup` 子命令——检查 `claude` 安装/登录 + 探测 transcript 契约并记入配置。先把"契约成立与否"摸清，后续后台层才有依据。
+3. **前台评审**：`claude.mjs`（构建/spawn/解析）+ `git.mjs` + `cc:review` skill + `review` 子命令，跑通只读评审。
+4. **前台任务**：`cc:delegate` skill + `task` 子命令，跑通可写委派。
+5. **后台作业**：`jobs.mjs`（状态机）+ `state.mjs` + `transcript.mjs`（防御解析）+ `status`/`result`/`cancel`，含 agents 适配层与 `unknown/lost` 兜底。
+6. **内部 skills**：`claude-cli-runtime` / `claude-result-handling` / `claude-prompting`。
+7. **测试与文档**：§9 三层测试（含 fixture 契约测试）+ README。写边界用例（env-gated）跑通后，再决定文档措辞。
+8. **（v1.1）hooks**：`session-lifecycle` + `stop-review-gate` + `setup` 的幂等/备份/冲突检测安装。
 
-每阶段交付后做最小验证（dry-run / smoke），有验证证据才标记完成。
+每阶段交付后做最小验证（dry-run / smoke / fixture），有验证证据才标记完成。
