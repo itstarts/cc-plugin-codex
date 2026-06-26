@@ -40,9 +40,9 @@ Codex 收尾前自动调用 Claude 做一次只读评审,P0/P1 拦截(`decision:
 
 ## C. 工程/发布完善
 
-- **C1** 确认 CI 跑绿:`gh run list --repo itstarts/cc-plugin-codex --limit 3`,不绿要修。极小。
-- **C2** CHANGELOG.md:正式发版时补(当前按 YAGNI 跳过)。小。
-- **C3** 版本号策略:plugin.json 现为 `0.1.0`,定个 bump 流程(参考项目有 `bump-version.mjs`,可简化)。小。
+- **C1** 确认 CI 跑绿:`gh run list --repo itstarts/cc-plugin-codex --limit 3`,不绿要修。极小。~~（已完成）~~
+- **C2** CHANGELOG.md:正式发版时补。小。~~（已完成，v0.2.0 一次性归拢 A/B 类变更）~~
+- **C3** 版本号策略:定个 bump 流程。小。~~（已完成，0.1.0 → 0.2.0,plugin.json/package.json/README 同步）~~
 - **C4** README 示例输出/配图:加一段真实评审输出示例,更直观。小。
 
 ## 推荐优先级

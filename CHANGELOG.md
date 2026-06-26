@@ -1,0 +1,44 @@
+# Changelog
+
+本项目的所有显著变更都记录在本文件。
+
+格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
+版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
+
+## [0.2.0] - 2026-06-27
+
+### Added
+
+- **Stop hook 评审门禁**：会话结束时可自动触发 Claude Code 评审，走 plugin manifest `hooks` 字段声明路线（实测 Codex 0.142 接受）。默认关闭、需用户显式开启、fail-open，开关状态存于 per-workspace state。
+- **评审结构化输出**：`cc:review` 接入 `--json-schema`，对评审结果做强约束结构化输出。
+- **写边界集成测试**：新增 env-gated（`CC_PLUGIN_E2E=1`）端到端测试，实测 `acceptEdits + --add-dir` 将写操作限制在仓库内。
+
+### Changed
+
+- model/effort 参数透传修正（此前 review 漏传 effort）。
+- 作业状态渲染补充 `lost` 态提示。
+- 据写边界实测结果，将 spec §7.2 与 README 中相关措辞由“预期”升级为“已验证限制”。
+
+### Fixed
+
+- transcript 防御式解析：兼容纯字符串 content 与 MultiEdit/NotebookEdit 条目。
+- `cc:result` 先校验 job 存在再查 agents，避免误判。
+- CI 测试发现修正，改用 `node --test` 默认递归。
+
+### Performance
+
+- `parseTranscript` 增加 mtime+size 指纹缓存与 256 条 LRU 上限。
+
+## [0.1.0] - 2026-06-26
+
+### Added
+
+- 首个可用版本：`cc` 插件本体与 Codex 本地 marketplace 骨架。
+- `cc:review` —— 让 Claude Code 只读评审当前改动 / 分支 / PR。
+- `cc:delegate` —— 把编码任务委派给 Claude Code 执行（可写，限定在仓库内），支持前台/后台作业。
+- 零依赖 Node.js 运行时：companion 入口、CLI 参数解析、作业状态机、状态目录与作业索引、git 评审目标解析、claude 调用与输出解析、结果渲染、防御式 transcript 解析。
+- `status` / `result` / `cancel` / `setup` 子命令。
+- 中文 README、评审 schema、端到端冒烟验证记录、LICENSE、CI。
+
+[0.2.0]: https://github.com/itstarts/cc-plugin-codex/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/itstarts/cc-plugin-codex/releases/tag/v0.1.0

@@ -30,6 +30,8 @@ codex plugin list | grep cc        # 期望: installed, enabled
 
 完整安装、用法、安全边界与数据外发说明见 **[plugins/cc/README.md](plugins/cc/README.md)**。
 
+版本变更记录见 **[CHANGELOG.md](CHANGELOG.md)**。
+
 ## 能力
 
 - `cc:review` —— 让 Claude Code 只读评审当前改动 / 分支 / PR。
