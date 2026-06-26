@@ -14,14 +14,26 @@
 
 ## 安装
 
-把本插件目录加入你的 Codex 本地 marketplace，并在 `~/.codex/config.toml` 启用：
+本仓库本身就是一个 Codex 本地 marketplace：marketplace 清单在 `.agents/plugins/marketplace.json`，插件在 `plugins/cc/`。
+
+把仓库根作为 marketplace 加入 Codex（路径填仓库根，不是 `plugins/cc`）：
+
+```bash
+codex plugin marketplace add <仓库根路径>     # 例如 /path/to/cc-plugin-codex
+codex plugin list                              # 确认能看到 cc
+```
+
+或手动在 `~/.codex/config.toml` 配置后启用：
 
 ```toml
+[marketplaces.itstarts-local]
+path = "<仓库根路径>"
+
 [plugins."cc@itstarts-local"]
 enabled = true
 ```
 
-（或通过 `codex plugin add` 按你的 Codex 版本安装。）
+安装后重启 Codex 使插件生效。
 
 ## 用法
 
