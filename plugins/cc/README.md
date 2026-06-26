@@ -77,7 +77,28 @@ node "<plugin>/scripts/claude-companion.mjs" cancel <jobId>
 - **评审会改我的代码吗？** 不会。`cc:review` 走只读权限；只有 `cc:delegate` 才允许 Claude 写文件，且限定在仓库内。
 - **skill 没被触发怎么办？** 用 `/skills` 显式选择 `cc:review` / `cc:delegate`，或在请求里明确点名「Claude Code」。
 
-## 数据外发说明
+## 评审门禁（Stop hook，可选）
+
+可选特性：让 Codex 在每次收尾前自动调用 Claude Code 对当前改动做一次只读评审，发现 P0/P1 阻断级问题就拦截收尾并说明原因，否则放行。
+
+默认关闭，需要两步显式开启：
+
+1. 开启开关（按工作区记录，存在插件 state 里）：
+
+   ```bash
+   node "<plugin>/scripts/claude-companion.mjs" setup --enable-review-gate
+   # 关闭：setup --disable-review-gate
+   ```
+
+2. 信任 hook：插件经 manifest 声明了 Stop hook，Codex 出于安全默认不执行未信任的 hook。需在 Codex 中信任本插件的 hook 后才会触发（首次会提示信任；信任前 hook 静默跳过）。
+
+行为说明：
+
+- 门禁关闭、解析输入失败、`claude` 不可用、或已在 stop-hook 循环内（`stop_hook_active`）时一律放行（`continue:true`），不会把你卡在收尾环节（fail-open）。
+- 仅当评审返回 P0/P1 时拦截（`decision:block`），P2/P3 放行并附提示。
+- 评审走只读路径（`--permission-mode plan`），不改文件，不写任何用户配置。
+
+
 
 `claude` 虽在本机运行，但推理在 Anthropic 服务端完成：prompt 与所选仓库上下文会发送到外部服务。「本机 CLI」不等于「数据不外发」。请在知情前提下使用，并只发送必要上下文。
 
@@ -88,14 +109,15 @@ node "<plugin>/scripts/claude-companion.mjs" cancel <jobId>
 
 ## 实现说明
 
-- 运行时为零依赖 Node.js（ESM `.mjs`），入口 `scripts/claude-companion.mjs` 分发 `setup/review/task/status/result/cancel`，各 `scripts/lib/*.mjs` 模块分担参数解析、claude 调用、状态机、transcript 解析等职责。
+- 运行时为零依赖 Node.js（ESM `.mjs`），入口 `scripts/claude-companion.mjs` 分发 `setup/review/task/status/result/cancel/gate`，各 `scripts/lib/*.mjs` 模块分担参数解析、claude 调用、状态机、transcript 解析、门禁决策等职责。
 - skill 通过相对路径 `../../scripts/claude-companion.mjs` 调用 companion（Codex 不注入插件根环境变量，相对路径在仓库与缓存副本中均有效）。
 - 后台作业结果从 Claude transcript JSONL 读取；后台模式下 Claude 自生成真实 sessionId，companion 通过 `claude agents --json` 解析真实 id 定位 transcript。
+- Stop 门禁经 manifest `hooks` 字段声明（Codex 0.142 的 PluginManifest 接受该字段），hook 包装脚本 `hooks/stop-review-gate` 经 `$0` 自定位 companion，把 stdin 的 Codex Stop 契约透传给 `gate` 子命令。
 
 ## 测试
 
 ```bash
-cd plugins/cc && node --test     # 75 个单元/契约/fixture 测试
+cd plugins/cc && node --test     # 98 个单元/契约/fixture 测试
 ```
 
 端到端冒烟与真实 Codex 会话验证记录见 `tests/SMOKE.md`。

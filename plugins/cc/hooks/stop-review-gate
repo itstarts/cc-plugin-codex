@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Codex Stop hook for the cc plugin: review gate.
+#
+# Codex 把 manifest 里 "./hooks/stop-review-gate" 解析为插件根下的绝对路径再执行，
+# 因此 $0 是绝对路径，可据此定位同插件内的 companion 脚本，无需依赖 PLUGIN_ROOT 等环境变量。
+#
+# 该 hook 把 stdin 的 Codex Stop 契约透传给 companion 的 gate 子命令，
+# companion 按门禁开关决定放行或拦截，并在 stdout 输出 Codex Stop decision JSON。
+# fail-open：companion 自身始终以 0 退出并输出放行决策，hook 不额外加工。
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+COMPANION="${PLUGIN_ROOT}/scripts/claude-companion.mjs"
+
+# 找不到 node 或 companion 时直接放行，避免 hook 故障卡住收尾
+if ! command -v node >/dev/null 2>&1 || [ ! -f "${COMPANION}" ]; then
+  printf '{"continue":true}\n'
+  exit 0
+fi
+
+# companion 自身保证 fail-open（异常时输出 continue:true 并退出 0）；
+# 这里再兜一层：万一 node 进程崩溃/被杀导致非零退出，仍输出放行决策，不让门禁 fail-closed。
+node "${COMPANION}" gate || printf '{"continue":true}\n'
+exit 0

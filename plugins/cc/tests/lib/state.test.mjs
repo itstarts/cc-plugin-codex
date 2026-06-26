@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 
 process.env.HOME = mkdtempSync(path.join(os.tmpdir(), "cc-home-"));
-const { loadState, saveState, upsertJob, findJob, resolveStateDir } = await import("../../scripts/lib/state.mjs");
+const { loadState, saveState, upsertJob, findJob, resolveStateDir, isReviewGateEnabled, setReviewGate } = await import("../../scripts/lib/state.mjs");
 
 const cwd = mkdtempSync(path.join(os.tmpdir(), "cc-ws-"));
 
@@ -38,4 +38,25 @@ test("upsert 更新时返回合并后的完整对象", () => {
   assert.equal(merged.a, 1);
   assert.equal(merged.b, 2);
   assert.equal(merged.updatedAt, 1001);
+});
+
+test("评审门禁默认关闭", () => {
+  const ws = mkdtempSync(path.join(os.tmpdir(), "cc-gate-"));
+  assert.equal(isReviewGateEnabled(ws), false);
+});
+
+test("setReviewGate 开关读写并持久化", () => {
+  const ws = mkdtempSync(path.join(os.tmpdir(), "cc-gate-"));
+  assert.equal(setReviewGate(ws, true), true);
+  assert.equal(isReviewGateEnabled(ws), true);
+  setReviewGate(ws, false);
+  assert.equal(isReviewGateEnabled(ws), false);
+});
+
+test("setReviewGate 不影响已有 jobs", () => {
+  const ws = mkdtempSync(path.join(os.tmpdir(), "cc-gate-"));
+  upsertJob(ws, { id: "g1", status: "running", updatedAt: 1 });
+  setReviewGate(ws, true);
+  assert.equal(findJob(ws, "g1").status, "running");
+  assert.equal(isReviewGateEnabled(ws), true);
 });

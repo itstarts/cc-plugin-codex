@@ -71,3 +71,25 @@ export function upsertJob(cwd, job) {
 export function findJob(cwd, id) {
   return loadState(cwd).jobs.find((j) => j.id === id) ?? null;
 }
+
+/**
+ * 读取 Stop 评审门禁开关。默认关闭：仅当用户显式开启后才返回 true。
+ * 读取出错（无 state、损坏）一律视为关闭，保证 hook 在异常时放行而非误拦截。
+ */
+export function isReviewGateEnabled(cwd) {
+  try {
+    return loadState(cwd).config?.reviewGate === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 设置 Stop 评审门禁开关，持久化到 per-workspace state.json 的 config.reviewGate。
+ */
+export function setReviewGate(cwd, enabled) {
+  const state = loadState(cwd);
+  state.config = { ...state.config, reviewGate: !!enabled };
+  saveState(cwd, state);
+  return !!enabled;
+}
