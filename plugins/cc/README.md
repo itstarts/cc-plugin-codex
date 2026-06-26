@@ -45,7 +45,8 @@ enabled = true
 在 Codex 会话里用自然语言触发（skill 按 description 隐式匹配），或用 `/skills` 显式选择：
 
 - 评审当前改动：说「让 Claude Code 评审一下当前改动」即可命中 `cc:review`。可附 `--base main --scope branch` 选择 diff 范围，或后接聚焦点文本。
-- 委派任务：说「把这个任务交给 Claude Code：……」命中 `cc:delegate`。可附 `--background` 走后台、`--model <alias>`、`--effort <level>`。
+- 挑战式评审：说「让 Claude Code 挑战一下这个设计」命中 `cc:adversarial-review`。它质疑实现方向、设计取舍与失败面,而非只挑实现缺陷;target 选择与 `cc:review` 一致,可后接聚焦文本,只读。
+- 委派任务：说「把这个任务交给 Claude Code：……」命中 `cc:delegate`。可附 `--background` 走后台、`--model <alias>`、`--effort <level>`。未指定 `--resume`/`--fresh` 时,若检测到本仓库上一次后台委派的可续线程,会询问续接还是新开。
 
 ## 评审输出示例
 
@@ -161,7 +162,7 @@ node "<plugin>/scripts/claude-companion.mjs" cancel <jobId>
 
 ## 实现说明
 
-- 运行时为零依赖 Node.js（ESM `.mjs`），入口 `scripts/claude-companion.mjs` 分发 `setup/review/task/status/result/cancel/gate`，各 `scripts/lib/*.mjs` 模块分担参数解析、claude 调用、状态机、transcript 解析、门禁决策等职责。
+- 运行时为零依赖 Node.js（ESM `.mjs`），入口 `scripts/claude-companion.mjs` 分发 `setup/review/adversarial-review/task/resume-candidate/status/result/cancel/gate`，各 `scripts/lib/*.mjs` 模块分担参数解析、claude 调用、状态机、transcript 解析、门禁决策等职责。
 - skill 通过相对路径 `../../scripts/claude-companion.mjs` 调用 companion（Codex 不注入插件根环境变量，相对路径在仓库与缓存副本中均有效）。
 - 后台作业结果从 Claude transcript JSONL 读取；后台模式下 Claude 自生成真实 sessionId，companion 通过 `claude agents --json` 解析真实 id 定位 transcript。
 - Stop 门禁经 manifest `hooks` 字段声明（Codex 0.142 的 PluginManifest 接受该字段），hook 包装脚本 `hooks/stop-review-gate` 经 `$0` 自定位 companion，把 stdin 的 Codex Stop 契约透传给 `gate` 子命令。
@@ -169,7 +170,7 @@ node "<plugin>/scripts/claude-companion.mjs" cancel <jobId>
 ## 测试
 
 ```bash
-cd plugins/cc && node --test     # 109 个单元/契约/fixture 测试（e2e 默认跳过）
+cd plugins/cc && node --test     # 115 个单元/契约/fixture 测试（e2e 默认跳过）
 ```
 
 写边界 env-gated 集成测试默认跳过，需真实 `claude`（已登录）才运行：

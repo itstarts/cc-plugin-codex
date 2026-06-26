@@ -28,7 +28,7 @@ function fetchAgentsMap(cwd) {
 }
 
 const SPEC = {
-  boolean: ["background", "json", "enable-review-gate", "disable-review-gate"],
+  boolean: ["background", "json", "enable-review-gate", "disable-review-gate", "fresh"],
   string: ["base", "scope", "model", "effort", "resume"],
 };
 
@@ -41,6 +41,31 @@ function buildReviewPrompt(diffText, focus) {
     focus ? `Focus: ${focus}` : "",
     "Report each issue as a finding with a severity (P0 critical, P1 high, P2 medium, P3 low),",
     "a short title, the file and line when known, and a concrete detail. Add a brief overall summary.",
+    "",
+    "=== DIFF ===",
+    diffText || "(empty diff)",
+  ];
+  return parts.filter(Boolean).join("\n");
+}
+
+/**
+ * 挑战式（adversarial）评审 prompt：换评审立场，默认怀疑、试图证明改动不该上线，
+ * 重点打高代价/难发现的失败面（auth、数据丢失、回滚、竞态、版本漂移等）。
+ * 复用与普通 review 相同的 P0–P3 结构化输出契约，立场差异完全体现在 prompt。
+ */
+function buildAdversarialPrompt(diffText, focus) {
+  const parts = [
+    "You are performing an ADVERSARIAL code review. Read-only: do not modify files.",
+    "Your job is to break confidence in this change, not to validate it.",
+    "Question the chosen implementation, design choices, tradeoffs, and hidden assumptions —",
+    "not just surface-level defects. Default to skepticism; if something only works on the happy path, treat that as a real weakness.",
+    focus ? `Weight this focus heavily: ${focus}` : "",
+    "Prioritize expensive, dangerous, or hard-to-detect failures:",
+    "auth/permission/trust boundaries; data loss, corruption, irreversible state; rollback/retry/idempotency gaps;",
+    "race conditions and ordering assumptions; empty-state/null/timeout/degraded-dependency behavior; version skew and migration hazards.",
+    "Report only material findings (skip style/naming nits). Use severity P0 critical, P1 high, P2 medium, P3 low,",
+    "a short title, the file and line when known, and a concrete detail with the likely impact and a concrete fix.",
+    "Write the summary as a terse ship/no-ship assessment. If the change is genuinely safe, say so and report no findings.",
     "",
     "=== DIFF ===",
     diffText || "(empty diff)",
@@ -84,13 +109,13 @@ function runForegroundReview(cwd, { scope, base, focus, model, timeoutMs = 0 } =
   return attachReviewFindings(runClaudeForeground({ prompt, args, cwd, timeoutMs }));
 }
 
-function cmdReview(rest, cwd) {
+function cmdReview(rest, cwd, { kind = "review", promptBuilder = buildReviewPrompt } = {}) {
   const { flags, values, positional } = parseArgs(rest, SPEC);
   const json = !!flags.json;
   const repoRoot = resolveRepoRoot(cwd);
   const diff = collectDiff(cwd, { scope: values.scope ?? "working-tree", base: values.base });
   if (!diff.ok) return { out: makeError(ERROR_CODES.NONZERO_EXIT, "git diff 失败", { stderr: diff.stderr }), json };
-  const prompt = buildReviewPrompt(diff.text, positional.join(" "));
+  const prompt = promptBuilder(diff.text, positional.join(" "));
   // schema 是内置静态资源；加载失败属于打包缺陷，明确报错而非静默降级为自由文本评审
   let schema;
   try {
@@ -103,7 +128,7 @@ function cmdReview(rest, cwd) {
     const args = buildClaudeArgs({ mode: "review", repoRoot, model: values.model, effort: values.effort, background: true, sessionId, schema });
     const started = startClaudeBackground({ prompt, args, cwd });
     if (!started.ok) return { out: started, json };
-    const job = createJob({ cwd, kind: "review", shortId: started.shortId, sessionId, request: { scope: values.scope, base: values.base } });
+    const job = createJob({ cwd, kind, shortId: started.shortId, sessionId, request: { scope: values.scope, base: values.base } });
     return { out: makeOk({ jobId: job.id, shortId: started.shortId, status: "running" }), json };
   }
   const args = buildClaudeArgs({ mode: "review", repoRoot, model: values.model, effort: values.effort, schema });
@@ -116,16 +141,52 @@ function cmdTask(rest, cwd) {
   const repoRoot = resolveRepoRoot(cwd);
   const prompt = positional.join(" ").trim();
   if (!prompt) return { out: makeError(ERROR_CODES.INVALID_ARGS, "task 需要任务描述文本"), json };
+  // --fresh 与 --resume 语义冲突（强制新开 vs 续接指定会话），同传视为参数错误，
+  // 避免 skill 透传时出现"既要新开又要续接"的未定义行为。
+  if (flags.fresh && values.resume) {
+    return { out: makeError(ERROR_CODES.INVALID_ARGS, "--fresh 与 --resume 互斥"), json };
+  }
+  // --fresh 强制新开：companion 层不向 claude 传任何 resume id（即便上游误带）。
+  const resume = flags.fresh ? undefined : values.resume;
   if (flags.background) {
     const sessionId = randomUUID();
-    const args = buildClaudeArgs({ mode: "task", repoRoot, model: values.model, effort: values.effort, background: true, sessionId, resume: values.resume });
+    const args = buildClaudeArgs({ mode: "task", repoRoot, model: values.model, effort: values.effort, background: true, sessionId, resume });
     const started = startClaudeBackground({ prompt, args, cwd });
     if (!started.ok) return { out: started, json };
     const job = createJob({ cwd, kind: "task", shortId: started.shortId, sessionId, request: { prompt } });
     return { out: makeOk({ jobId: job.id, shortId: started.shortId, status: "running" }), json };
   }
-  const args = buildClaudeArgs({ mode: "task", repoRoot, model: values.model, effort: values.effort, resume: values.resume });
+  const args = buildClaudeArgs({ mode: "task", repoRoot, model: values.model, effort: values.effort, resume });
   return { out: runClaudeForeground({ prompt, args, cwd, timeoutMs: 0 }), json };
+}
+
+/**
+ * 探测当前工作区是否存在可续的上一次委派线程，供 delegate skill 在用户未显式
+ * 指定 --resume/--fresh 时询问"续接还是新开"。
+ * 候选取最近一个能从 claude agents 解析出**真实** sessionId 的 task 作业
+ * （jobs 已按 updatedAt 倒序持久化）。后台启动时存的是插件自生成 UUID，会被
+ * claude 忽略，不能作为可续 id；因此这里只信任 agents 暴露的真实 sessionId，
+ * 不回退到 job.sessionId。claude 不可用或无命中时返回 available:false，不阻塞委派。
+ */
+function cmdResumeCandidate(rest, cwd) {
+  const { flags } = parseArgs(rest, SPEC);
+  const json = !!flags.json;
+  const jobs = loadState(cwd).jobs.filter((j) => j.kind === "task");
+  if (!jobs.length) return { out: makeOk({ available: false, candidate: null }), json };
+  // 解析真实 sessionId 需要 claude agents；不可用时不报错，按"无候选"降级
+  const agentsResult = fetchAgentsMap(cwd);
+  const agentsMap = agentsResult.ok ? agentsResult.map : new Map();
+  for (const j of jobs) {
+    const hit = agentsMap.get(j.shortId) ?? (j.sessionId ? agentsMap.get(j.sessionId) : null);
+    const sessionId = hit?.sessionId;
+    if (sessionId) {
+      return { out: makeOk({
+        available: true,
+        candidate: { id: j.id, status: j.status, sessionId, startedAt: j.startedAt },
+      }), json };
+    }
+  }
+  return { out: makeOk({ available: false, candidate: null }), json };
 }
 
 function cmdStatus(rest, cwd) {
@@ -166,8 +227,8 @@ function cmdResult(rest, cwd) {
   if (!agentsResult.ok) return { out: agentsResult, json };
   const agentsMap = agentsResult.map;
   const out = readJobResult(cwd, jobId, agentsMap);
-  // review 作业的 transcript 终结文本同样是 schema 约束的结构化 JSON，附加 findings
-  if (job.kind === "review") return { out: attachReviewFindings(out), json };
+  // review / adversarial-review 作业的 transcript 终结文本同样是 schema 约束的结构化 JSON，附加 findings
+  if (job.kind === "review" || job.kind === "adversarial-review") return { out: attachReviewFindings(out), json };
   return { out, json };
 }
 
@@ -237,7 +298,7 @@ function cmdGate(stdin) {
 }
 
 function usage() {
-  return "用法: claude-companion <setup|review|task|status|result|cancel|gate> [args] [--json]";
+  return "用法: claude-companion <setup|review|adversarial-review|task|resume-candidate|status|result|cancel|gate> [args] [--json]";
 }
 
 function readStdin() {
@@ -269,7 +330,9 @@ function main() {
   let res;
   switch (sub) {
     case "review": res = cmdReview(rest, cwd); break;
+    case "adversarial-review": res = cmdReview(rest, cwd, { kind: "adversarial-review", promptBuilder: buildAdversarialPrompt }); break;
     case "task": res = cmdTask(rest, cwd); break;
+    case "resume-candidate": res = cmdResumeCandidate(rest, cwd); break;
     case "status": res = cmdStatus(rest, cwd); break;
     case "result": res = cmdResult(rest, cwd); break;
     case "cancel": res = cmdCancel(rest, cwd); break;
