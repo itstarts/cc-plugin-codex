@@ -56,10 +56,16 @@ export function saveState(cwd, state) {
 export function upsertJob(cwd, job) {
   const state = loadState(cwd);
   const idx = state.jobs.findIndex((j) => j.id === job.id);
-  if (idx === -1) state.jobs.push(job);
-  else state.jobs[idx] = { ...state.jobs[idx], ...job };
+  let stored;
+  if (idx === -1) {
+    stored = job;
+    state.jobs.push(stored);
+  } else {
+    stored = { ...state.jobs[idx], ...job };
+    state.jobs[idx] = stored;
+  }
   saveState(cwd, state);
-  return job;
+  return stored;
 }
 
 export function findJob(cwd, id) {

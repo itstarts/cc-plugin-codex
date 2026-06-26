@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -30,4 +30,12 @@ test("最多保留 50 条", () => {
   for (let i = 0; i < 60; i++) upsertJob(cwd, { id: `k${i}`, updatedAt: i });
   const s = loadState(cwd);
   assert.ok(s.jobs.length <= 50);
+});
+
+test("upsert 更新时返回合并后的完整对象", () => {
+  upsertJob(cwd, { id: "m1", a: 1, updatedAt: 1000 });
+  const merged = upsertJob(cwd, { id: "m1", b: 2, updatedAt: 1001 });
+  assert.equal(merged.a, 1);
+  assert.equal(merged.b, 2);
+  assert.equal(merged.updatedAt, 1001);
 });
