@@ -47,6 +47,58 @@ enabled = true
 - 评审当前改动：说「让 Claude Code 评审一下当前改动」即可命中 `cc:review`。可附 `--base main --scope branch` 选择 diff 范围，或后接聚焦点文本。
 - 委派任务：说「把这个任务交给 Claude Code：……」命中 `cc:delegate`。可附 `--background` 走后台、`--model <alias>`、`--effort <level>`。
 
+## 评审输出示例
+
+`cc:review` 经 `--json-schema` 约束 Claude Code 输出结构化结果（按 P0–P3 分级的 findings + summary）。companion 默认渲染为文本，按严重度排序：
+
+```text
+评审发现 3 个问题:
+
+[P0] 未校验的用户输入直接拼进 SQL (src/db/query.js:42)
+  buildQuery 把 req.query.name 直接拼接到 SQL 字符串,存在注入风险。应改用参数化查询。
+[P1] 异步异常未捕获导致进程退出 (src/jobs/worker.js:88)
+  await 调用未包 try/catch,reject 会冒泡为 unhandledRejection。
+[P2] 魔法数字缺少命名常量 (src/config.js:15)
+  超时 30000 建议提为具名常量并加注释说明单位。
+
+小结: 发现 1 个 P0 注入风险需优先修复,另有 1 个 P1 稳定性问题与若干可读性建议。
+```
+
+加 `--json` 则返回 companion JSON 包络(含 `ok`/`sessionId` 与 schema 解析出的 `findings`/`summary`),便于程序消费:
+
+```json
+{
+  "ok": true,
+  "findings": [
+    {
+      "severity": "P0",
+      "title": "未校验的用户输入直接拼进 SQL",
+      "file": "src/db/query.js",
+      "line": 42,
+      "detail": "buildQuery 把 req.query.name 直接拼接到 SQL 字符串,存在注入风险。应改用参数化查询。"
+    },
+    {
+      "severity": "P1",
+      "title": "异步异常未捕获导致进程退出",
+      "file": "src/jobs/worker.js",
+      "line": 88,
+      "detail": "await 调用未包 try/catch,reject 会冒泡为 unhandledRejection。"
+    },
+    {
+      "severity": "P2",
+      "title": "魔法数字缺少命名常量",
+      "file": "src/config.js",
+      "line": 15,
+      "detail": "超时 30000 建议提为具名常量并加注释说明单位。"
+    }
+  ],
+  "summary": "发现 1 个 P0 注入风险需优先修复,另有 1 个 P1 稳定性问题与若干可读性建议。",
+  "sessionId": "…"
+}
+```
+
+> 上为格式示例(说明输出形态),非某次真实运行的逐字结果;实际 findings 数量、措辞、定位随被评审改动而变。未发现问题时文本为「未发现问题。」。开启 Stop 门禁时,P0/P1 会拦截收尾(见下文)。
+
 ## 典型流程
 
 发版前评审当前改动：
@@ -117,7 +169,7 @@ node "<plugin>/scripts/claude-companion.mjs" cancel <jobId>
 ## 测试
 
 ```bash
-cd plugins/cc && node --test     # 100 个单元/契约/fixture 测试（e2e 默认跳过）
+cd plugins/cc && node --test     # 109 个单元/契约/fixture 测试（e2e 默认跳过）
 ```
 
 写边界 env-gated 集成测试默认跳过，需真实 `claude`（已登录）才运行：
