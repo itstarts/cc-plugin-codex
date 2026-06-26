@@ -1,6 +1,6 @@
 import { parseArgs } from "./lib/args.mjs";
 import { resolveRepoRoot, collectDiff } from "./lib/git.mjs";
-import { buildClaudeArgs, runClaudeForeground, startClaudeBackground, classifyFailure } from "./lib/claude.mjs";
+import { buildClaudeArgs, runClaudeForeground, startClaudeBackground, classifyFailure, loadReviewSchema, parseReviewFindings } from "./lib/claude.mjs";
 import { createJob, adaptAgentsList, reconcileStatus, readJobResult, resolveRealSessionId } from "./lib/jobs.mjs";
 import { loadState, upsertJob } from "./lib/state.mjs";
 import { transcriptPathFor } from "./lib/transcript.mjs";
@@ -31,12 +31,27 @@ function buildReviewPrompt(diffText, focus) {
   const parts = [
     "You are reviewing code changes. Read-only: do not modify files.",
     focus ? `Focus: ${focus}` : "",
-    "Report findings grouped by severity. Be concrete (file:line).",
+    "Report each issue as a finding with a severity (P0 critical, P1 high, P2 medium, P3 low),",
+    "a short title, the file and line when known, and a concrete detail. Add a brief overall summary.",
     "",
     "=== DIFF ===",
     diffText || "(empty diff)",
   ];
   return parts.filter(Boolean).join("\n");
+}
+
+/**
+ * 若评审结果文本是 schema 约束下的结构化 JSON，则附加解析出的 findings/summary。
+ * 解析失败时原样返回，保证自由文本评审仍可用。
+ */
+function attachReviewFindings(out) {
+  if (!out.ok) return out;
+  const parsed = parseReviewFindings(out.result);
+  if (parsed) {
+    out.findings = parsed.findings;
+    if (parsed.summary !== undefined) out.summary = parsed.summary;
+  }
+  return out;
 }
 
 function cmdReview(rest, cwd) {
@@ -46,16 +61,23 @@ function cmdReview(rest, cwd) {
   const diff = collectDiff(cwd, { scope: values.scope ?? "working-tree", base: values.base });
   if (!diff.ok) return { out: makeError(ERROR_CODES.NONZERO_EXIT, "git diff 失败", { stderr: diff.stderr }), json };
   const prompt = buildReviewPrompt(diff.text, positional.join(" "));
+  // schema 是内置静态资源；加载失败属于打包缺陷，明确报错而非静默降级为自由文本评审
+  let schema;
+  try {
+    schema = loadReviewSchema();
+  } catch (e) {
+    return { out: makeError(ERROR_CODES.INVALID_JSON, "评审 schema 加载失败，请检查插件安装完整性", { detail: String(e?.message ?? e) }), json };
+  }
   if (flags.background) {
     const sessionId = randomUUID();
-    const args = buildClaudeArgs({ mode: "review", repoRoot, model: values.model, background: true, sessionId });
+    const args = buildClaudeArgs({ mode: "review", repoRoot, model: values.model, background: true, sessionId, schema });
     const started = startClaudeBackground({ prompt, args, cwd });
     if (!started.ok) return { out: started, json };
     const job = createJob({ cwd, kind: "review", shortId: started.shortId, sessionId, request: { scope: values.scope, base: values.base } });
     return { out: makeOk({ jobId: job.id, shortId: started.shortId, status: "running" }), json };
   }
-  const args = buildClaudeArgs({ mode: "review", repoRoot, model: values.model });
-  return { out: runClaudeForeground({ prompt, args, cwd, timeoutMs: 0 }), json };
+  const args = buildClaudeArgs({ mode: "review", repoRoot, model: values.model, schema });
+  return { out: attachReviewFindings(runClaudeForeground({ prompt, args, cwd, timeoutMs: 0 })), json };
 }
 
 function cmdTask(rest, cwd) {
@@ -106,11 +128,17 @@ function cmdResult(rest, cwd) {
   const json = !!flags.json;
   const jobId = positional[0];
   if (!jobId) return { out: makeError(ERROR_CODES.INVALID_ARGS, "result 需要 jobId"), json };
+  // 先校验 job 是否存在，避免在 claude CLI 缺失时把 job_not_found 误判成 missing_cli
+  const job = loadState(cwd).jobs.find((j) => j.id === jobId);
+  if (!job) return { out: makeError(ERROR_CODES.JOB_NOT_FOUND, `未找到作业 ${jobId}`), json };
   // 获取真实 sessionId 以定位后台作业的 transcript 文件
   const agentsResult = fetchAgentsMap(cwd);
   if (!agentsResult.ok) return { out: agentsResult, json };
   const agentsMap = agentsResult.map;
-  return { out: readJobResult(cwd, jobId, agentsMap), json };
+  const out = readJobResult(cwd, jobId, agentsMap);
+  // review 作业的 transcript 终结文本同样是 schema 约束的结构化 JSON，附加 findings
+  if (job.kind === "review") return { out: attachReviewFindings(out), json };
+  return { out, json };
 }
 
 function cmdCancel(rest, cwd) {
