@@ -1,14 +1,14 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["findings"],
+  "required": ["findings", "summary"],
   "properties": {
     "findings": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["severity", "title"],
+        "required": ["severity", "title", "file", "line", "detail"],
         "properties": {
           "severity": { "type": "string", "enum": ["P0", "P1", "P2", "P3"] },
           "title": { "type": "string" },

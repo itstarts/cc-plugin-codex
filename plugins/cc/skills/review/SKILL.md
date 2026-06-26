@@ -24,6 +24,9 @@ Argument rules:
 - `--model <alias>` optionally selects the Claude model.
 - Add `--json` only when you need structured output.
 
+Output:
+- Review runs under a JSON schema, so findings come back structured (severity P0–P3, title, file:line, detail) plus an overall summary. Text mode prints them sorted by severity; `--json` exposes the raw `findings`/`summary` fields.
+
 Boundaries:
 - This is review-only. Do not modify files based on the review.
 - Present findings, then stop and ask the user which issues to fix. Follow the claude-result-handling discipline.

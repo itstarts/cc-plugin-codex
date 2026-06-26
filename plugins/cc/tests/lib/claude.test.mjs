@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildClaudeArgs, parseClaudeJson, classifyFailure, scrubSecrets } from "../../scripts/lib/claude.mjs";
+import { buildClaudeArgs, parseClaudeJson, classifyFailure, scrubSecrets, loadReviewSchema, parseReviewFindings } from "../../scripts/lib/claude.mjs";
 import { ERROR_CODES } from "../../scripts/lib/errors.mjs";
 
 test("review 模式走 plan 只读", () => {
@@ -62,4 +62,57 @@ test("scrubSecrets 脱敏 JWT token", () => {
   const out = scrubSecrets(`value is ${jwt} end`);
   assert.ok(!out.includes(jwt), "JWT should be redacted");
   assert.ok(out.includes("[redacted-jwt]"), "should contain [redacted-jwt]");
+});
+
+test("schema 透传：传 schema 时注入 --json-schema", () => {
+  const a = buildClaudeArgs({ mode: "review", repoRoot: "/repo", schema: '{"type":"object"}' });
+  const i = a.indexOf("--json-schema");
+  assert.ok(i >= 0, "应包含 --json-schema");
+  assert.equal(a[i + 1], '{"type":"object"}');
+});
+
+test("schema 透传：不传 schema 时不注入", () => {
+  const a = buildClaudeArgs({ mode: "review", repoRoot: "/repo" });
+  assert.ok(!a.includes("--json-schema"));
+});
+
+test("loadReviewSchema 返回合法 JSON 且含 findings", () => {
+  const s = loadReviewSchema();
+  assert.equal(typeof s, "string");
+  const obj = JSON.parse(s);
+  assert.ok(obj.properties?.findings);
+});
+
+test("parseReviewFindings 解析结构化结果", () => {
+  const text = JSON.stringify({
+    findings: [{ severity: "P1", title: "bug", file: "a.js", line: 3, detail: "x" }],
+    summary: "ok",
+  });
+  const r = parseReviewFindings(text);
+  assert.equal(r.findings.length, 1);
+  assert.equal(r.findings[0].severity, "P1");
+  assert.equal(r.summary, "ok");
+});
+
+test("parseReviewFindings 接受 file/line 为 null", () => {
+  const text = JSON.stringify({
+    findings: [{ severity: "P3", title: "note", file: null, line: null, detail: "d" }],
+    summary: "s",
+  });
+  assert.equal(parseReviewFindings(text).findings.length, 1);
+});
+
+test("parseReviewFindings 对非结构化文本返回 null", () => {
+  assert.equal(parseReviewFindings("free text review"), null);
+  assert.equal(parseReviewFindings(""), null);
+  assert.equal(parseReviewFindings(JSON.stringify({ notFindings: 1 })), null);
+});
+
+test("parseReviewFindings 对残缺/非法 finding 返回 null", () => {
+  // 缺 detail
+  assert.equal(parseReviewFindings(JSON.stringify({ findings: [{ severity: "P1", title: "t" }] })), null);
+  // severity 非法枚举
+  assert.equal(parseReviewFindings(JSON.stringify({ findings: [{ severity: "X", title: "t", file: null, line: null, detail: "d" }] })), null);
+  // line 非整数
+  assert.equal(parseReviewFindings(JSON.stringify({ findings: [{ severity: "P1", title: "t", file: "a", line: "3", detail: "d" }] })), null);
 });

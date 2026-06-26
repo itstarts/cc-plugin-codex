@@ -18,11 +18,11 @@
 - 默认关闭,用户显式开启。
 - 工作量:中。是参考插件的核心特性之一。
 
-### A2. `--json-schema` 强约束评审输出
-`plugins/cc/schemas/review-output.schema.json` 已就绪但未接入运行时。
-- 在 `claude.mjs` 构建评审调用时传 `--json-schema <schema>`,让 Claude 返回结构化 finding(severity/title/file/line/detail)。
-- companion/render 据此结构化展示。
-- 工作量:小。价值明确,优先做。
+### A2. `--json-schema` 强约束评审输出 ✅ 已完成
+`plugins/cc/schemas/review-output.schema.json` 已接入运行时。
+- `claude.mjs` 新增 `loadReviewSchema()`(读取并压缩 schema)与 `parseReviewFindings()`(解析结构化结果);`buildClaudeArgs` 支持 `schema` 参数透传 `--json-schema`。
+- `cmdReview`(前台/后台)与 `cmdResult`(review 作业)解析出 `findings`/`summary`;render 层按 severity 排序展示,`--json` 暴露原始字段。
+- 解析失败时回退自由文本,保证健壮性。测试 82 通过。
 
 ### A3. 写边界 env-gated 集成测试
 见 spec §9.3。实测 `--permission-mode acceptEdits + --add-dir <repo>` 是否真把写限制在仓库内。
@@ -47,5 +47,5 @@
 
 ## 推荐优先级
 
-先做 **A2（json-schema,小而高价值）→ C1（确认 CI）→ A1（Stop hook,v1.1 核心特性）**。
+先做 ~~A2（json-schema,小而高价值）~~（已完成）→ **C1（确认 CI）→ A1（Stop hook,v1.1 核心特性）**。
 A3 写边界测试在需要对外宣称安全性时再做。B 类按需,锦上添花。
