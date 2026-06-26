@@ -9,14 +9,13 @@ metadata:
 
 Hand a coding task to the local Claude Code CLI with write access scoped to the repo.
 
-Run exactly one command, forwarding the user's raw arguments as the task text. Use `${PLUGIN_ROOT}` if Codex sets it; otherwise run from the skill root with the relative path:
+Run exactly one command from this skill's directory, forwarding the user's raw arguments as the task text:
 
 ```bash
-# 若 Codex 提供插件根变量：
-node "${PLUGIN_ROOT}/scripts/claude-companion.mjs" task <ARGS>
-# 否则从本 skill 目录运行：
 node "../../scripts/claude-companion.mjs" task <ARGS>
 ```
+
+The path is relative to this `SKILL.md`'s directory (`<plugin>/skills/delegate/`), so it resolves whether the plugin runs from its repo or the installed cache copy.
 
 Argument rules:
 - Free text is the task description (required).

@@ -10,7 +10,7 @@ metadata:
 
 Rules for calling the companion script from review/delegate flows.
 
-- Invoke exactly once per request: `node "${PLUGIN_ROOT}/scripts/claude-companion.mjs" <review|task> <ARGS>` (or, if Codex sets no plugin-root variable, the skill-root-relative `node "../../scripts/claude-companion.mjs" ...`).
-- Strip routing flags (`--background`, `--wait`, `--fresh`, `--resume`, `--model`, `--effort`, `--json`) out of the natural-language task/focus text; pass them as flags, not as prompt text.
+- Invoke exactly once per request, from the skill's own directory: `node "../../scripts/claude-companion.mjs" <review|task> <ARGS>`. The path is relative to the calling `SKILL.md`'s directory; Codex does not inject a plugin-root environment variable.
+- Strip routing flags (`--background`, `--resume`, `--model`, `--effort`, `--json`) out of the natural-language task/focus text; pass them as flags, not as prompt text.
 - Default review to read-only (`review`), tasks to write-capable (`task`).
 - Do not inspect the repo, call other commands, or do independent work beyond the single companion call.
