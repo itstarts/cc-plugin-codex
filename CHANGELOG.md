@@ -5,6 +5,19 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0] - 2026-06-27
+
+向参考项 [`openai/codex-plugin-cc`](https://github.com/openai/codex-plugin-cc) 看齐的功能对齐。
+
+### Added
+
+- **`cc:adversarial-review`（挑战式评审）**：让 Claude Code 做只读的挑战式评审,质疑实现方向、设计取舍与隐藏假设,重点打高代价/难发现的失败面(auth、数据丢失、回滚、竞态、版本漂移),而非只挑实现缺陷。复用 `cc:review` 的 target 选择、前台/后台作业与 P0–P3 结构化输出。
+- **`cc:delegate` 续线程体验**：新增 `--fresh`(强制新开会话)与 `resume-candidate` 探测;未指定 `--resume`/`--fresh` 时,若检测到本仓库上一次后台委派的可续线程,会询问续接还是新开。
+
+### Notes
+
+- 参考项的 `transfer`(把会话导成对方可 resume 的线程)未镜像:其依赖对方运行时的「外部 agent 会话导入」能力,而 Claude Code 当前无导入外部会话的能力(`--resume` 只认自身 session)。README 已注明该差异。
+
 ## [0.2.0] - 2026-06-27
 
 ### Added
@@ -40,5 +53,6 @@
 - `status` / `result` / `cancel` / `setup` 子命令。
 - 中文 README、评审 schema、端到端冒烟验证记录、LICENSE、CI。
 
+[0.3.0]: https://github.com/itstarts/cc-plugin-codex/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/itstarts/cc-plugin-codex/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/itstarts/cc-plugin-codex/releases/tag/v0.1.0
