@@ -42,3 +42,28 @@ test("文本模式空 findings 提示未发现问题", () => {
   const out = renderResult({ ok: true, findings: [] }, { json: false });
   assert.ok(out.includes("未发现问题"));
 });
+
+test("文本模式展示后台作业列表", () => {
+  const out = renderResult({ ok: true, jobs: [
+    { id: "task-1", status: "running", kind: "task" },
+    { id: "review-2", status: "completed", kind: "review" },
+  ] }, { json: false });
+  assert.ok(out.includes("task-1"));
+  assert.ok(out.includes("[running]"));
+  assert.ok(out.includes("review-2"));
+  // 无 lost 时不出现引导
+  assert.ok(!out.includes("无法从 claude agents"));
+});
+
+test("文本模式 lost 作业给出人工排查引导", () => {
+  const out = renderResult({ ok: true, jobs: [
+    { id: "task-x", status: "lost", kind: "task" },
+  ] }, { json: false });
+  assert.ok(out.includes("lost"));
+  assert.ok(out.includes("claude agents"));
+});
+
+test("文本模式空作业列表提示暂无", () => {
+  const out = renderResult({ ok: true, jobs: [] }, { json: false });
+  assert.ok(out.includes("暂无后台作业"));
+});

@@ -1,0 +1,2 @@
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"MultiEdit","input":{"file_path":"/repo/a.js"}},{"type":"tool_use","name":"NotebookEdit","input":{"file_path":"/repo/nb.ipynb"}},{"type":"text","text":"did edits"}]}}
+{"type":"result","is_error":false,"result":"done","session_id":"s"}

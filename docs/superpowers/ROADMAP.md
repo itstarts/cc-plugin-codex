@@ -31,12 +31,12 @@ Codex 收尾前自动调用 Claude 做一次只读评审,P0/P1 拦截(`decision:
 - 由 `CC_PLUGIN_E2E=1` 开启,默认跳过,不进 CI。实测通过(真实 claude,约 39s):仓库内写成功,仓库外写被拒。
 - 据此 spec §7.2 与 README 措辞已从"请求 Claude 限制"升级为"已验证限制在仓库内"。
 
-## B. 健壮性（Codex 评审记录的延后项）
+## B. 健壮性（Codex 评审记录的延后项）✅ 已完成
 
-- **B1** `--effort`/`--model` 透传校验:确认 alias 与全名都正确传给 claude。小。
-- **B2** 后台 `lost` 态的用户提示:状态机已有 `lost`,render 层可给更明确的"无法确认结果,请手动 `claude agents` 查看"引导。小。
-- **B3** transcript 解析支持更多终结事件类型:目前认 `result`/`assistant`,Claude 若新增类型可能漏,可加防御。小。
-- **B4** status 性能:目前对每个 job 都重新解析整个 transcript(Codex 评审提出),job 多时可加缓存或轻量检查。小,非紧急。
+- **B1** `--effort`/`--model` 透传校验:`buildClaudeArgs` 原样透传 alias 与全名(model 传给 `claude` CLI,由其自校验,本插件不做二次枚举兜底);修正 review 入口漏传 effort 的缺陷,使 review/task 行为一致;补单测固定行为。
+- **B2** 后台 `lost` 态用户提示:render 层新增 jobs 文本展示,含 lost 时给出"运行 `claude agents` 手动查看或重新委派"引导。
+- **B3** transcript 终结事件防御:支持纯字符串 content 的终结消息(无 result 行也能取结果);写工具集扩展到 MultiEdit/NotebookEdit。(经核实 Claude 终结事件仅 `result`/`assistant`,未臆造 `stop`/`end` 等未证实类型。)
+- **B4** status 性能:parseTranscript 按文件 mtime+size 指纹缓存解析结果,文件未变时复用,变更/删除自动失效;加 256 条 LRU 上限防长跑增长。
 
 ## C. 工程/发布完善
 

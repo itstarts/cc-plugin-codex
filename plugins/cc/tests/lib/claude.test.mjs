@@ -24,6 +24,23 @@ test("background 注入 session-id 且不带 json 单结果", () => {
   assert.ok(!(a.includes("--output-format") && a.includes("json")));
 });
 
+test("model/effort 原样透传（alias 与全名均不改写）", () => {
+  // alias 形式
+  const a = buildClaudeArgs({ mode: "task", repoRoot: "/repo", model: "haiku", effort: "low" });
+  assert.equal(a[a.indexOf("--model") + 1], "haiku");
+  assert.equal(a[a.indexOf("--effort") + 1], "low");
+  // 全名形式
+  const b = buildClaudeArgs({ mode: "review", repoRoot: "/repo", model: "claude-haiku-4-5-20251001", effort: "high" });
+  assert.equal(b[b.indexOf("--model") + 1], "claude-haiku-4-5-20251001");
+  assert.equal(b[b.indexOf("--effort") + 1], "high");
+});
+
+test("未给 model/effort 时不注入对应标志", () => {
+  const a = buildClaudeArgs({ mode: "task", repoRoot: "/repo" });
+  assert.ok(!a.includes("--model"));
+  assert.ok(!a.includes("--effort"));
+});
+
 test("解析成功结果", () => {
   const r = parseClaudeJson(JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "hi", session_id: "s1" }));
   assert.equal(r.ok, true);
