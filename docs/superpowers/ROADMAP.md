@@ -11,12 +11,13 @@
 
 ## A. 功能完善（价值最高）
 
-### A1. Stop hook 评审门禁（v1.1）
-见设计 spec §8。Codex 收尾前自动调用 Claude 做一次评审,`ALLOW:` 放行 / `BLOCK:` 拦截并说明原因。
-- 要点:hook 不能进 plugin manifest(Codex 校验器拒绝 `hooks` 字段),由 `setup` 帮用户安装到 `~/.codex/hooks.json` 或 `config.toml [hooks]`。
-- 安装必须幂等 + 备份 + 所有权标记 + 冲突检测(见 spec §8 安装安全清单)。
-- 默认关闭,用户显式开启。
-- 工作量:中。是参考插件的核心特性之一。
+### A1. Stop hook 评审门禁（v1.1）✅ 已完成
+Codex 收尾前自动调用 Claude 做一次只读评审,P0/P1 拦截(`decision:block`)并说明原因,否则放行(`continue:true`)。
+- **改走 manifest 声明路线**:实测 Codex 0.142 的 PluginManifest 接受 `hooks` 字段(参考插件 superpowers 亦然),推翻 spec §8 旧假设。插件不写用户全局/项目级配置,trust 由 Codex UI 处理。
+- `plugin.json` 声明 `"hooks": "./hooks/hooks-codex.json"`(Stop 事件);`hooks/stop-review-gate` wrapper 经 `$0` 自定位 companion,透传 stdin Stop 契约给 `gate` 子命令。
+- 门禁默认关闭,`setup --enable-review-gate` 显式开启,状态存 per-workspace state.json。
+- fail-open:开关关闭/输入非法/claude 不可用/`stop_hook_active` 一律放行,始终退出码 0。
+- 实测确认:manifest 含 hooks 可正常安装启用、hook 文件落入缓存、wrapper 端到端自定位运行;hook 需用户在 Codex 信任后才触发(trust 机制,符合预期)。测试 98 通过。
 
 ### A2. `--json-schema` 强约束评审输出 ✅ 已完成
 `plugins/cc/schemas/review-output.schema.json` 已接入运行时。
@@ -47,5 +48,5 @@
 
 ## 推荐优先级
 
-先做 ~~A2（json-schema,小而高价值）~~（已完成）→ **C1（确认 CI）→ A1（Stop hook,v1.1 核心特性）**。
+先做 ~~A2（json-schema,小而高价值）~~（已完成）→ ~~C1（确认 CI）~~（已完成）→ ~~A1（Stop hook,v1.1 核心特性）~~（已完成）。
 A3 写边界测试在需要对外宣称安全性时再做。B 类按需,锦上添花。

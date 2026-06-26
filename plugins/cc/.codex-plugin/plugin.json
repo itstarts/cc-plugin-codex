@@ -9,6 +9,7 @@
   "license": "Apache-2.0",
   "keywords": ["claude-code", "code-review", "delegate", "headless"],
   "skills": "./skills/",
+  "hooks": "./hooks/hooks-codex.json",
   "interface": {
     "displayName": "Claude Code",
     "shortDescription": "Delegate review and coding tasks to Claude Code",

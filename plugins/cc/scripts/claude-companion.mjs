@@ -2,12 +2,14 @@ import { parseArgs } from "./lib/args.mjs";
 import { resolveRepoRoot, collectDiff } from "./lib/git.mjs";
 import { buildClaudeArgs, runClaudeForeground, startClaudeBackground, classifyFailure, loadReviewSchema, parseReviewFindings } from "./lib/claude.mjs";
 import { createJob, adaptAgentsList, reconcileStatus, readJobResult, resolveRealSessionId } from "./lib/jobs.mjs";
-import { loadState, upsertJob } from "./lib/state.mjs";
+import { loadState, upsertJob, isReviewGateEnabled, setReviewGate } from "./lib/state.mjs";
 import { transcriptPathFor } from "./lib/transcript.mjs";
 import { renderResult } from "./lib/render.mjs";
+import { parseStopInput, allowDecision, decideFromFindings } from "./lib/gate.mjs";
 import { ERROR_CODES, makeError, makeOk } from "./lib/errors.mjs";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 
 /**
  * 运行 claude agents --json --all 并返回结构化结果。
@@ -25,7 +27,13 @@ function fetchAgentsMap(cwd) {
   return makeOk({ map: adaptAgentsList(r.stdout) });
 }
 
-const SPEC = { boolean: ["background", "json"], string: ["base", "scope", "model", "effort", "resume"] };
+const SPEC = {
+  boolean: ["background", "json", "enable-review-gate", "disable-review-gate"],
+  string: ["base", "scope", "model", "effort", "resume"],
+};
+
+// Stop 门禁评审的有界超时：claude 挂起时不让 Stop hook 永久阻塞收尾。
+const GATE_REVIEW_TIMEOUT_MS = 120000;
 
 function buildReviewPrompt(diffText, focus) {
   const parts = [
@@ -52,6 +60,28 @@ function attachReviewFindings(out) {
     if (parsed.summary !== undefined) out.summary = parsed.summary;
   }
   return out;
+}
+
+/**
+ * 跑一次前台只读评审并附加结构化 findings。供 review 子命令与 Stop 门禁共用。
+ * timeoutMs 为 0 表示不限时（交互式 review 默认）；门禁场景传入有界超时，
+ * 避免 claude 挂起时把 Stop hook 永久阻塞。
+ * 返回 attachReviewFindings 处理后的结构化结果（含 ok/findings/summary 或错误）。
+ */
+function runForegroundReview(cwd, { scope, base, focus, model, timeoutMs = 0 } = {}) {
+  const repoRoot = resolveRepoRoot(cwd);
+  const diff = collectDiff(cwd, { scope: scope ?? "working-tree", base });
+  if (!diff.ok) return makeError(ERROR_CODES.NONZERO_EXIT, "git diff 失败", { stderr: diff.stderr });
+  const prompt = buildReviewPrompt(diff.text, focus);
+  // schema 是内置静态资源；加载失败属于打包缺陷，明确报错而非静默降级为自由文本评审
+  let schema;
+  try {
+    schema = loadReviewSchema();
+  } catch (e) {
+    return makeError(ERROR_CODES.INVALID_JSON, "评审 schema 加载失败，请检查插件安装完整性", { detail: String(e?.message ?? e) });
+  }
+  const args = buildClaudeArgs({ mode: "review", repoRoot, model, schema });
+  return attachReviewFindings(runClaudeForeground({ prompt, args, cwd, timeoutMs }));
 }
 
 function cmdReview(rest, cwd) {
@@ -159,13 +189,63 @@ function cmdCancel(rest, cwd) {
 function cmdSetup(rest, cwd) {
   const { flags } = parseArgs(rest, SPEC);
   const json = !!flags.json;
+  // 互斥开关：同时给出 enable/disable 视为参数错误
+  if (flags["enable-review-gate"] && flags["disable-review-gate"]) {
+    return { out: makeError(ERROR_CODES.INVALID_ARGS, "--enable-review-gate 与 --disable-review-gate 互斥"), json };
+  }
+  let reviewGate;
+  if (flags["enable-review-gate"]) reviewGate = setReviewGate(cwd, true);
+  else if (flags["disable-review-gate"]) reviewGate = setReviewGate(cwd, false);
+  else reviewGate = isReviewGateEnabled(cwd);
+
   const ver = spawnSync("claude", ["--version"], { cwd, encoding: "utf8" });
-  if (ver.status !== 0) return { out: makeError(ERROR_CODES.MISSING_CLI, "未检测到 claude，请安装 Claude Code CLI"), json };
-  return { out: makeOk({ claudeVersion: ver.stdout.trim(), ready: true }), json };
+  // 门禁开关已持久化（gate 本身 fail-open，claude 暂不可用也不影响开关语义）；
+  // 即便就绪检查失败也带回 reviewGate，避免状态对用户不透明。
+  if (ver.status !== 0) {
+    return { out: makeError(ERROR_CODES.MISSING_CLI, "未检测到 claude，请安装 Claude Code CLI", { reviewGate }), json };
+  }
+  return { out: makeOk({ claudeVersion: ver.stdout.trim(), ready: true, reviewGate }), json };
+}
+
+/**
+ * Stop 评审门禁 hook 入口。读 stdin 的 Codex Stop 契约，按开关决定是否评审。
+ * 输出 Codex Stop hook decision JSON（裸 JSON，非 renderResult 包络）。
+ * fail-open 原则：任何异常、开关关闭、已在 stop 循环内，一律放行（continue:true），
+ * 始终退出码 0，避免 hook 自身故障把用户卡在收尾环节。
+ */
+function cmdGate(stdin) {
+  try {
+    const parsed = parseStopInput(stdin);
+    // 解析失败或非 Stop 事件：放行
+    if (!parsed.ok) return allowDecision();
+    // 已在 stop-hook 循环内：放行，防止门禁递归触发
+    if (parsed.stopHookActive) return allowDecision();
+    const cwd = parsed.cwd || process.cwd();
+    // 门禁默认关闭，未显式开启则放行（等价 no-op）
+    if (!isReviewGateEnabled(cwd)) return allowDecision();
+
+    const review = runForegroundReview(cwd, { scope: "working-tree", focus: "收尾前门禁评审，聚焦阻断级缺陷", timeoutMs: GATE_REVIEW_TIMEOUT_MS });
+    // 评审本身失败（claude 缺失/鉴权/超时等）：放行并提示，不因门禁故障阻塞用户
+    if (!review.ok) {
+      return allowDecision(`Claude 评审门禁未能完成（${review.error?.code ?? "unknown"}），已放行。`);
+    }
+    return decideFromFindings(review.findings, review.summary);
+  } catch {
+    // 任何非预期运行时异常都必须 fail-open，避免门禁自身故障把用户卡在收尾环节
+    return allowDecision();
+  }
 }
 
 function usage() {
-  return "用法: claude-companion <setup|review|task|status|result|cancel> [args] [--json]";
+  return "用法: claude-companion <setup|review|task|status|result|cancel|gate> [args] [--json]";
+}
+
+function readStdin() {
+  try {
+    return readFileSync(0, "utf8");
+  } catch {
+    return "";
+  }
 }
 
 function main() {
@@ -174,6 +254,17 @@ function main() {
   if (!sub) {
     process.stderr.write(usage() + "\n");
     process.exit(2);
+  }
+  // gate 是 hook 入口，输出裸 decision JSON 且始终放行式退出（fail-open）
+  if (sub === "gate") {
+    let decision;
+    try {
+      decision = cmdGate(readStdin());
+    } catch {
+      decision = { continue: true };
+    }
+    process.stdout.write(JSON.stringify(decision) + "\n");
+    process.exit(0);
   }
   let res;
   switch (sub) {
