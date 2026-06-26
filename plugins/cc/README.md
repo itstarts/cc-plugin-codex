@@ -23,7 +23,7 @@
 ```bash
 codex plugin marketplace add <仓库根路径>     # 例如 /path/to/cc-plugin-codex
 codex plugin add cc@itstarts-local            # 安装并启用
-codex plugin list | grep cc                   # 确认: cc@itstarts-local  installed, enabled  0.1.0
+codex plugin list | grep cc                   # 确认: cc@itstarts-local  installed, enabled  0.2.0
 ```
 
 或手动在 `~/.codex/config.toml` 配置：
