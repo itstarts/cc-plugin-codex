@@ -36,8 +36,15 @@ export function parseTranscript(filePath) {
       continue; // 跳过损坏行
     }
     if (obj.type === "result" && typeof obj.result === "string") {
+      // is_error:true 表示任务以错误结束，不作为成功结果；直接返回结构化错误
+      if (obj.is_error === true) {
+        return makeError(ERROR_CODES.NONZERO_EXIT, "claude 任务以错误结束", {
+          filePath,
+          subtype: obj.subtype ?? null,
+        });
+      }
       finalText = obj.result;
-    } else if (obj.type === "assistant" && obj.message?.content) {
+    } else if (obj.type === "assistant" && Array.isArray(obj.message?.content)) {
       const texts = obj.message.content.filter((c) => c.type === "text").map((c) => c.text);
       if (texts.length) finalText = texts.join("\n");
     }

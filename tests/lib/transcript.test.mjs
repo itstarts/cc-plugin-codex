@@ -30,3 +30,16 @@ test("路径包含 sessionId 与 projects", () => {
   assert.ok(p.includes("/.claude/projects/"));
   assert.ok(p.endsWith("abc.jsonl"));
 });
+
+test("is_error:true 的 result 行 → ok:false nonzero_exit", () => {
+  const r = parseTranscript(fx("transcript-error.jsonl"));
+  assert.equal(r.ok, false);
+  assert.equal(r.error.code, ERROR_CODES.NONZERO_EXIT);
+  assert.equal(r.error.subtype, "error_during_execution");
+});
+
+test("content 为字符串（非数组）时解析不崩溃，仍返回 result 行", () => {
+  const r = parseTranscript(fx("transcript-stringcontent.jsonl"));
+  assert.equal(r.ok, true);
+  assert.equal(r.result, "ok-result");
+});

@@ -89,3 +89,28 @@ test("readJobResult 使用 agentsMap 解析真实 sessionId 定位 transcript", 
   assert.ok(result.ok, `期望 ok 但得到错误: ${JSON.stringify(result)}`);
   assert.equal(result.result, "hello from real transcript");
 });
+
+test("readJobResult 使用持久化 transcriptPath（无 agentsMap 覆盖）", () => {
+  const storedSid = "stored-sid-0000-0000-000000000002";
+  const altSid    = "alt-sid-0000-0000-000000000002";
+
+  const job = createJob({
+    cwd,
+    kind: "task",
+    shortId: "stored01",
+    sessionId: storedSid,
+    request: { prompt: "stored path test" },
+  });
+
+  // 写入 transcript 到 altSid 路径，然后把该路径持久化到 job
+  const altPath = transcriptPathFor(cwd, altSid);
+  mkdirSync(path.dirname(altPath), { recursive: true });
+  writeFileSync(altPath, JSON.stringify({ type: "result", result: "from stored path" }) + "\n");
+
+  upsertJob(cwd, { id: job.id, transcriptPath: altPath, updatedAt: Date.now() });
+
+  // 不传 agentsMap，应当直接使用持久化路径
+  const result = readJobResult(cwd, job.id);
+  assert.ok(result.ok, `期望 ok 但得到错误: ${JSON.stringify(result)}`);
+  assert.equal(result.result, "from stored path");
+});

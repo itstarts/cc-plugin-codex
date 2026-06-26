@@ -96,3 +96,25 @@ test("resolveRealSessionId：agentsMap 无匹配时返回 job.sessionId", () => 
   const job = { shortId: "6bf4ab97", sessionId: "fake-uuid" };
   assert.equal(resolveRealSessionId(job, new Map()), "fake-uuid");
 });
+
+test("status completed → reconcileStatus 返回 completed（终态粘滞）", () => {
+  const m = new Map([["x", { state: "failed" }]]);
+  const s = reconcileStatus({ status: "completed", shortId: "x" }, m, { ok: false });
+  assert.equal(s, "completed");
+});
+
+test("status completed → agentsMap 为空也返回 completed（终态粘滞）", () => {
+  const s = reconcileStatus({ status: "completed", shortId: "x" }, new Map(), { ok: false });
+  assert.equal(s, "completed");
+});
+
+test("status failed → reconcileStatus 返回 failed（终态粘滞）", () => {
+  const m = new Map([["x", { state: "done" }]]);
+  const s = reconcileStatus({ status: "failed", shortId: "x" }, m, { ok: true });
+  assert.equal(s, "failed");
+});
+
+test("status failed → agentsMap 为空也返回 failed（终态粘滞）", () => {
+  const s = reconcileStatus({ status: "failed", shortId: "x" }, new Map(), null);
+  assert.equal(s, "failed");
+});

@@ -27,6 +27,8 @@ export function adaptAgentsList(rawJson) {
 
 export function reconcileStatus(job, agentsMap, transcriptResult) {
   if (job.status === "cancelled") return "cancelled";
+  if (job.status === "completed") return "completed";
+  if (job.status === "failed") return "failed";
   const hit = agentsMap.get(job.shortId) ?? (job.sessionId ? agentsMap.get(job.sessionId) : null);
   if (hit) {
     if (hit.state === "done" || hit.state === "completed") return "completed";
@@ -62,10 +64,20 @@ export function createJob({ cwd, kind, shortId, sessionId, request }) {
 /**
  * 读取作业结果。agentsMap 可选；若提供，则先解析真实 sessionId 以定位正确的 transcript 文件。
  * 后台作业的 transcript 以 claude 自生成的真实 sessionId 命名，与启动时传入的 uuid 不同。
+ * 解析优先级：
+ *   1. agentsMap 命中且真实 sessionId 与存储值不同 → 用新计算的真实路径（后台作业必须走此路径）
+ *   2. job.transcriptPath 已存储 → 直接使用（避免重复计算）
+ *   3. 否则按 job.sessionId 计算路径（兜底）
  */
 export function readJobResult(cwd, jobId, agentsMap) {
   const job = findJob(cwd, jobId);
   if (!job) return makeError(ERROR_CODES.JOB_NOT_FOUND, `未找到作业 ${jobId}`);
   const realSid = agentsMap ? resolveRealSessionId(job, agentsMap) : job.sessionId;
-  return parseTranscript(transcriptPathFor(cwd, realSid));
+  // 若 agents 解析出的真实 sessionId 与存储值不同，必须用真实 sessionId 重新计算路径
+  if (realSid && realSid !== job.sessionId) {
+    return parseTranscript(transcriptPathFor(cwd, realSid));
+  }
+  // 否则优先使用持久化存储的路径，回退到按 sessionId 计算
+  const filePath = job.transcriptPath ?? transcriptPathFor(cwd, job.sessionId);
+  return parseTranscript(filePath);
 }

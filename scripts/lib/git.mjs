@@ -14,5 +14,11 @@ export function buildDiffArgs({ scope, base } = {}) {
 export function collectDiff(cwd, opts = {}) {
   const args = buildDiffArgs(opts);
   const r = spawnSync("git", args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-  return { text: r.status === 0 ? r.stdout : "", args };
+  const ok = r.status === 0;
+  return {
+    text: ok ? r.stdout : "",
+    args,
+    ok,
+    stderr: ok ? "" : (r.stderr ?? "").slice(0, 500),
+  };
 }

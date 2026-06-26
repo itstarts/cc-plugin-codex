@@ -17,9 +17,13 @@ test("result 未知 job → job_not_found", () => {
   assert.equal(out.error.code, "job_not_found");
 });
 
-test("status --json 返回作业数组结构", () => {
+test("status --json 返回作业数组结构或 missing_cli 错误", () => {
   const r = spawnSync("node", [entry, "status", "--json"], { encoding: "utf8", env: { ...process.env, HOME: home } });
   const out = JSON.parse(r.stdout);
-  assert.equal(out.ok, true);
-  assert.ok(Array.isArray(out.jobs));
+  // 若 claude CLI 不存在则返回 missing_cli，否则返回作业数组
+  if (out.ok) {
+    assert.ok(Array.isArray(out.jobs));
+  } else {
+    assert.equal(out.error.code, "missing_cli");
+  }
 });
