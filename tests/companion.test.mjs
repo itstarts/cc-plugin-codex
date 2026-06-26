@@ -12,6 +12,7 @@ test("未知子命令返回结构化错误 JSON", () => {
   const out = JSON.parse(r.stdout);
   assert.equal(out.ok, false);
   assert.ok(out.error.message.includes("bogus"));
+  assert.equal(out.error.code, "invalid_args");
 });
 
 test("无子命令打印用法且非零退出", () => {

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildClaudeArgs, parseClaudeJson, classifyFailure } from "../../scripts/lib/claude.mjs";
+import { buildClaudeArgs, parseClaudeJson, classifyFailure, scrubSecrets } from "../../scripts/lib/claude.mjs";
 import { ERROR_CODES } from "../../scripts/lib/errors.mjs";
 
 test("review 模式走 plan 只读", () => {
@@ -45,4 +45,21 @@ test("classifyFailure 识别缺失与鉴权", () => {
   assert.equal(classifyFailure({ status: 127, stderr: "command not found: claude" }), ERROR_CODES.MISSING_CLI);
   assert.equal(classifyFailure({ status: 1, stderr: "Please log in to continue" }), ERROR_CODES.AUTH_REQUIRED);
   assert.equal(classifyFailure({ status: 1, stderr: "boom" }), ERROR_CODES.NONZERO_EXIT);
+});
+
+test("scrubSecrets 脱敏 sk- token 和 Authorization Bearer", () => {
+  const input = "error: sk-ABCDEFGH12345678 is invalid\nAuthorization: Bearer abc.def.ghi\nnormal text";
+  const out = scrubSecrets(input);
+  assert.ok(!out.includes("sk-ABCDEFGH12345678"), "sk- token should be redacted");
+  assert.ok(!out.includes("abc.def.ghi"), "Bearer token should be redacted");
+  assert.ok(out.includes("normal text"), "ordinary words should be untouched");
+  assert.ok(out.includes("[redacted]"), "should contain [redacted]");
+});
+
+test("scrubSecrets 脱敏 JWT token", () => {
+  // JWT not prefixed by a keyword: redacted directly as [redacted-jwt]
+  const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyMTIzIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+  const out = scrubSecrets(`value is ${jwt} end`);
+  assert.ok(!out.includes(jwt), "JWT should be redacted");
+  assert.ok(out.includes("[redacted-jwt]"), "should contain [redacted-jwt]");
 });

@@ -8,7 +8,7 @@ import { ERROR_CODES, makeError, makeOk } from "./lib/errors.mjs";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 
-const SPEC = { boolean: ["background", "wait", "fresh", "json"], string: ["base", "scope", "model", "effort", "resume"] };
+const SPEC = { boolean: ["background", "wait", "json"], string: ["base", "scope", "model", "effort", "resume"] };
 
 function buildReviewPrompt(diffText, focus) {
   const parts = [
@@ -74,7 +74,7 @@ function cmdResult(rest, cwd) {
   const { flags, positional } = parseArgs(rest, SPEC);
   const json = !!flags.json;
   const jobId = positional[0];
-  if (!jobId) return { out: makeError(ERROR_CODES.JOB_NOT_FOUND, "result 需要 jobId"), json };
+  if (!jobId) return { out: makeError(ERROR_CODES.INVALID_ARGS, "result 需要 jobId"), json };
   return { out: readJobResult(cwd, jobId), json };
 }
 
@@ -86,10 +86,11 @@ function cmdCancel(rest, cwd) {
   const job = state.jobs.find((j) => j.id === jobId);
   if (!job) return { out: makeError(ERROR_CODES.JOB_NOT_FOUND, `未找到作业 ${jobId}`), json };
   const r = spawnSync("claude", ["stop", job.shortId], { cwd, encoding: "utf8" });
-  if (r.status === 0) {
-    upsertJob(cwd, { id: jobId, status: "cancelled", updatedAt: Date.now() });
+  if (r.status !== 0) {
+    return { out: makeError(ERROR_CODES.NONZERO_EXIT, `claude stop 失败，退出码 ${r.status}`, { jobId }), json };
   }
-  return { out: makeOk({ jobId, cancelled: r.status === 0 }), json };
+  upsertJob(cwd, { id: jobId, status: "cancelled", updatedAt: Date.now() });
+  return { out: makeOk({ jobId, cancelled: true }), json };
 }
 
 function cmdSetup(rest, cwd) {
@@ -121,7 +122,7 @@ function main() {
     case "setup": res = cmdSetup(rest, cwd); break;
     default: {
       const json = rest.includes("--json");
-      res = { out: makeError(ERROR_CODES.JOB_NOT_FOUND, `未知子命令: ${sub}`), json };
+      res = { out: makeError(ERROR_CODES.INVALID_ARGS, `未知子命令: ${sub}`), json };
     }
   }
   process.stdout.write(renderResult(res.out, { json: res.json }) + "\n");

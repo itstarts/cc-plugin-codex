@@ -22,7 +22,7 @@ Argument rules:
 - Free text is the task description (required).
 - `--background` runs as a Claude background job; otherwise foreground.
 - `--model <alias>` / `--effort <level>` tune the run.
-- `--resume <id>` continues a prior Claude session; `--fresh` forces a new one.
+- `--resume <id>` continues a prior Claude session.
 - Add `--json` only when you need structured output.
 
 Boundaries and authorization:

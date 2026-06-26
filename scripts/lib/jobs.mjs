@@ -28,6 +28,8 @@ export function reconcileStatus(job, agentsMap, transcriptResult) {
   const hit = agentsMap.get(job.shortId) ?? (job.sessionId ? agentsMap.get(job.sessionId) : null);
   if (hit) {
     if (hit.state === "done" || hit.state === "completed") return "completed";
+    if (hit.state === "failed") return "failed";
+    if (hit.state === "stopped") return "cancelled";
     if (hit.state === "unknown") return transcriptResult?.ok ? "completed" : "unknown";
     return "running";
   }
