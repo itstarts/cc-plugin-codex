@@ -43,7 +43,7 @@ function cmdTask(rest, cwd) {
   const json = !!flags.json;
   const repoRoot = resolveRepoRoot(cwd);
   const prompt = positional.join(" ").trim();
-  if (!prompt) return { out: makeError(ERROR_CODES.INVALID_JSON, "task 需要任务描述文本"), json };
+  if (!prompt) return { out: makeError(ERROR_CODES.INVALID_ARGS, "task 需要任务描述文本"), json };
   if (flags.background) {
     const sessionId = randomUUID();
     const args = buildClaudeArgs({ mode: "task", repoRoot, model: values.model, effort: values.effort, background: true, sessionId, resume: values.resume });
