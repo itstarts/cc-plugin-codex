@@ -28,10 +28,20 @@
 
 ## 单元测试
 
-`node --test` → 68 tests, 68 pass, 0 fail。
+`node --test` → 75 tests, 75 pass, 0 fail（含 Codex 评审修复后新增用例）。
+
+## 真实 Codex 会话验证
+
+插件经 `codex plugin marketplace add <仓库根>` + `codex plugin add cc@itstarts-local` 安装，状态 `installed, enabled 0.1.0`。在真实 Codex 会话中：
+
+- `/skills` 列出 `cc:review`、`cc:delegate` ✓
+- `$PLUGIN_ROOT` / `$CODEX_PLUGIN_ROOT` 均为空 → Codex 不注入插件根变量；SKILL.md 改用相对路径 `../../scripts/claude-companion.mjs`，在仓库与缓存副本中均验证有效 ✓
+- 自然语言触发 `cc:review`、`cc:delegate` 均命中 skill 并完成任务 ✓
+
+注：marketplace 布局曾有 bug（清单误放仓库根、`source.path` 用 `.`），已修正为 `.agents/plugins/marketplace.json` + `./plugins/cc`，安装链路随后验证通过。
 
 ## 说明
 
 - 冒烟使用 `--model haiku` 降低成本，与生产模型选择无关。
-- 冒烟产生的临时文件 `SMOKE_SCRATCH.txt` 已清理，未进入任何提交。
+- 冒烟产生的临时文件已清理，未进入任何提交。
 - 写边界（spec §9.3 的 env-gated 严格验证：符号链接、嵌套仓库、cwd 外文件）仍按计划留待后续；本次仅验证了常规仓库内写入被正确限定。
