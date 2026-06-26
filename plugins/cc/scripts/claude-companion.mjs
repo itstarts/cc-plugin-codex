@@ -128,14 +128,16 @@ function cmdResult(rest, cwd) {
   const json = !!flags.json;
   const jobId = positional[0];
   if (!jobId) return { out: makeError(ERROR_CODES.INVALID_ARGS, "result 需要 jobId"), json };
+  // 先校验 job 是否存在，避免在 claude CLI 缺失时把 job_not_found 误判成 missing_cli
+  const job = loadState(cwd).jobs.find((j) => j.id === jobId);
+  if (!job) return { out: makeError(ERROR_CODES.JOB_NOT_FOUND, `未找到作业 ${jobId}`), json };
   // 获取真实 sessionId 以定位后台作业的 transcript 文件
   const agentsResult = fetchAgentsMap(cwd);
   if (!agentsResult.ok) return { out: agentsResult, json };
   const agentsMap = agentsResult.map;
   const out = readJobResult(cwd, jobId, agentsMap);
   // review 作业的 transcript 终结文本同样是 schema 约束的结构化 JSON，附加 findings
-  const job = loadState(cwd).jobs.find((j) => j.id === jobId);
-  if (job?.kind === "review") return { out: attachReviewFindings(out), json };
+  if (job.kind === "review") return { out: attachReviewFindings(out), json };
   return { out, json };
 }
 
