@@ -1,0 +1,2 @@
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"intermediate"}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"final answer","session_id":"s-normal"}

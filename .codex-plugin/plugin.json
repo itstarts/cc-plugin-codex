@@ -1,0 +1,25 @@
+{
+  "name": "cc",
+  "version": "0.1.0",
+  "description": "Use Claude Code from Codex to review code or delegate coding tasks.",
+  "author": {
+    "name": "itstarts"
+  },
+  "repository": "https://github.com/itstarts/cc-plugin-codex",
+  "license": "Apache-2.0",
+  "keywords": ["claude-code", "code-review", "delegate", "headless"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Claude Code",
+    "shortDescription": "Delegate review and coding tasks to Claude Code",
+    "longDescription": "Lets Codex call the local Claude Code CLI to review changes (read-only) or delegate coding tasks (write-capable), with foreground and background jobs.",
+    "developerName": "itstarts",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Write"],
+    "defaultPrompt": [
+      "Have Claude Code review my current diff.",
+      "Delegate this bug fix to Claude Code.",
+      "Ask Claude Code to implement this in the background."
+    ]
+  }
+}
