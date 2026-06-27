@@ -5,13 +5,14 @@
 ## 能力
 
 - `cc:review`：让 Claude Code 只读评审当前改动 / 指定分支 / PR，把结构化结果交回 Codex。
+- `cc:adversarial-review`：让 Claude Code 做挑战式评审，质疑实现方向、设计取舍与失败面，而非只挑实现缺陷，只读。
 - `cc:delegate`：把编码任务（调查、修复、实现）交给 Claude Code 执行，允许在仓库内改文件，支持前台/后台。
 - 后台作业：经 companion 的 `status` / `result <jobId>` / `cancel <jobId>` 管理（复用 Claude Code 原生后台机制）。
 
 ## 前置条件
 
 - 已安装 Codex（codex-cli 0.142.0+）与 Claude Code CLI（命令名 `claude`），且 `claude` 已本机登录。
-- 已安装 Node.js（v18+）。
+- 已安装 Node.js（>=18.18.0）。
 - 校验：`claude --version` 与 `node --version` 均有输出。
 
 ## 安装
@@ -172,7 +173,7 @@ node "<plugin>/scripts/claude-companion.mjs" cancel <jobId>
 ## 测试
 
 ```bash
-cd plugins/cc && node --test     # 115 个单元/契约/fixture 测试（e2e 默认跳过）
+cd plugins/cc && node --test     # 单元/契约/fixture 测试（e2e 默认跳过）
 ```
 
 写边界 env-gated 集成测试默认跳过，需真实 `claude`（已登录）才运行：

@@ -18,7 +18,7 @@ docs/superpowers/                  # 设计 spec 与实现 plan
 
 ## 快速开始
 
-需要本机已安装并登录 Codex 与 Claude Code（`claude`）CLI，以及 Node.js v18+。
+需要本机已安装并登录 Codex 与 Claude Code（`claude`）CLI，以及 Node.js >=18.18.0。
 
 直接从 GitHub 安装（无需 clone）：
 
@@ -52,5 +52,7 @@ cd plugins/cc && node --test       # 单元 / 契约 / fixture 测试
 ```
 
 设计文档：[docs/superpowers/specs/](docs/superpowers/specs/)　实现计划：[docs/superpowers/plans/](docs/superpowers/plans/)　验证记录：[plugins/cc/tests/SMOKE.md](plugins/cc/tests/SMOKE.md)
+
+贡献流程见 **[CONTRIBUTING.md](CONTRIBUTING.md)**。
 
 > `docs/superpowers/` 下是开发期的历史设计 spec 与实现 plan，记录设计思路，**不是安装/使用文档**。安装与用法以本文件和 [plugins/cc/README.md](plugins/cc/README.md) 为准。
