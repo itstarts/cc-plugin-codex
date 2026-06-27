@@ -28,7 +28,7 @@
 
 ## 单元测试
 
-`node --test` → 75 tests, 75 pass, 0 fail（含 Codex 评审修复后新增用例）。
+`node --test` → 全部单元/契约/fixture 测试通过，0 fail（e2e 默认跳过）。
 
 ## 真实 Codex 会话验证
 
