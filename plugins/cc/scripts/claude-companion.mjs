@@ -1,4 +1,4 @@
-import { parseArgs } from "./lib/args.mjs";
+import { parseArgs, validateArgs, SCOPE_VALUES } from "./lib/args.mjs";
 import { resolveRepoRoot, collectDiff } from "./lib/git.mjs";
 import { buildClaudeArgs, runClaudeForeground, startClaudeBackground, classifyFailure, loadReviewSchema, parseReviewFindings } from "./lib/claude.mjs";
 import { createJob, adaptAgentsList, reconcileStatus, readJobResult, resolveRealSessionId } from "./lib/jobs.mjs";
@@ -27,10 +27,28 @@ function fetchAgentsMap(cwd) {
   return makeOk({ map: adaptAgentsList(r.stdout) });
 }
 
+// 按命令拆分参数声明：让每个子命令只接受对它有意义的 flag，
+// 误用到别处的 flag（如对 task 传 --scope）被判为未知参数而非静默忽略。
+// json 为所有命令通用的输出格式开关。
 const SPEC = {
-  boolean: ["background", "json", "enable-review-gate", "disable-review-gate", "fresh"],
-  string: ["base", "scope", "model", "effort", "resume"],
+  review: { boolean: ["background", "json"], string: ["base", "scope", "model", "effort"] },
+  task: { boolean: ["background", "json", "fresh"], string: ["model", "effort", "resume"] },
+  job: { boolean: ["json"], string: [] }, // status / result / cancel / resume-candidate
+  setup: { boolean: ["json", "enable-review-gate", "disable-review-gate"], string: [] },
 };
+
+/**
+ * 解析并校验参数。未知 flag、开关误带取值、string flag 缺值、非法枚举一律映射为
+ * invalid_args，错误文本指明问题 flag，避免误输的 flag 被静默当成自由文本或空值吞掉。
+ * 成功返回 {parsed, json}；失败返回 {error, json}，由命令层短路返回。
+ */
+function parseChecked(rest, spec, { enums = {} } = {}) {
+  const parsed = parseArgs(rest, spec);
+  const json = !!parsed.flags.json;
+  const msg = validateArgs(parsed, { enums });
+  if (msg) return { error: makeError(ERROR_CODES.INVALID_ARGS, msg), json };
+  return { parsed, json };
+}
 
 // Stop 门禁评审的有界超时：claude 挂起时不让 Stop hook 永久阻塞收尾。
 const GATE_REVIEW_TIMEOUT_MS = 120000;
@@ -110,8 +128,10 @@ function runForegroundReview(cwd, { scope, base, focus, model, timeoutMs = 0 } =
 }
 
 function cmdReview(rest, cwd, { kind = "review", promptBuilder = buildReviewPrompt } = {}) {
-  const { flags, values, positional } = parseArgs(rest, SPEC);
-  const json = !!flags.json;
+  const checked = parseChecked(rest, SPEC.review, { enums: { scope: SCOPE_VALUES } });
+  if (checked.error) return { out: checked.error, json: checked.json };
+  const { flags, values, positional } = checked.parsed;
+  const json = checked.json;
   const repoRoot = resolveRepoRoot(cwd);
   const diff = collectDiff(cwd, { scope: values.scope ?? "working-tree", base: values.base });
   if (!diff.ok) return { out: makeError(ERROR_CODES.NONZERO_EXIT, "git diff 失败", { stderr: diff.stderr }), json };
@@ -136,8 +156,10 @@ function cmdReview(rest, cwd, { kind = "review", promptBuilder = buildReviewProm
 }
 
 function cmdTask(rest, cwd) {
-  const { flags, values, positional } = parseArgs(rest, SPEC);
-  const json = !!flags.json;
+  const checked = parseChecked(rest, SPEC.task);
+  if (checked.error) return { out: checked.error, json: checked.json };
+  const { flags, values, positional } = checked.parsed;
+  const json = checked.json;
   const repoRoot = resolveRepoRoot(cwd);
   const prompt = positional.join(" ").trim();
   if (!prompt) return { out: makeError(ERROR_CODES.INVALID_ARGS, "task 需要任务描述文本"), json };
@@ -169,8 +191,9 @@ function cmdTask(rest, cwd) {
  * 不回退到 job.sessionId。claude 不可用或无命中时返回 available:false，不阻塞委派。
  */
 function cmdResumeCandidate(rest, cwd) {
-  const { flags } = parseArgs(rest, SPEC);
-  const json = !!flags.json;
+  const checked = parseChecked(rest, SPEC.job);
+  if (checked.error) return { out: checked.error, json: checked.json };
+  const json = checked.json;
   const jobs = loadState(cwd).jobs.filter((j) => j.kind === "task");
   if (!jobs.length) return { out: makeOk({ available: false, candidate: null }), json };
   // 解析真实 sessionId 需要 claude agents；不可用时不报错，按"无候选"降级
@@ -190,8 +213,9 @@ function cmdResumeCandidate(rest, cwd) {
 }
 
 function cmdStatus(rest, cwd) {
-  const { flags } = parseArgs(rest, SPEC);
-  const json = !!flags.json;
+  const checked = parseChecked(rest, SPEC.job);
+  if (checked.error) return { out: checked.error, json: checked.json };
+  const json = checked.json;
   const agentsResult = fetchAgentsMap(cwd);
   if (!agentsResult.ok) return { out: agentsResult, json };
   const agentsMap = agentsResult.map;
@@ -215,8 +239,10 @@ function cmdStatus(rest, cwd) {
 }
 
 function cmdResult(rest, cwd) {
-  const { flags, positional } = parseArgs(rest, SPEC);
-  const json = !!flags.json;
+  const checked = parseChecked(rest, SPEC.job);
+  if (checked.error) return { out: checked.error, json: checked.json };
+  const { positional } = checked.parsed;
+  const json = checked.json;
   const jobId = positional[0];
   if (!jobId) return { out: makeError(ERROR_CODES.INVALID_ARGS, "result 需要 jobId"), json };
   // 先校验 job 是否存在，避免在 claude CLI 缺失时把 job_not_found 误判成 missing_cli
@@ -233,8 +259,10 @@ function cmdResult(rest, cwd) {
 }
 
 function cmdCancel(rest, cwd) {
-  const { flags, positional } = parseArgs(rest, SPEC);
-  const json = !!flags.json;
+  const checked = parseChecked(rest, SPEC.job);
+  if (checked.error) return { out: checked.error, json: checked.json };
+  const { positional } = checked.parsed;
+  const json = checked.json;
   const jobId = positional[0];
   const state = loadState(cwd);
   const job = state.jobs.find((j) => j.id === jobId);
@@ -248,8 +276,10 @@ function cmdCancel(rest, cwd) {
 }
 
 function cmdSetup(rest, cwd) {
-  const { flags } = parseArgs(rest, SPEC);
-  const json = !!flags.json;
+  const checked = parseChecked(rest, SPEC.setup);
+  if (checked.error) return { out: checked.error, json: checked.json };
+  const { flags } = checked.parsed;
+  const json = checked.json;
   // 互斥开关：同时给出 enable/disable 视为参数错误
   if (flags["enable-review-gate"] && flags["disable-review-gate"]) {
     return { out: makeError(ERROR_CODES.INVALID_ARGS, "--enable-review-gate 与 --disable-review-gate 互斥"), json };
