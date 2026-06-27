@@ -1,5 +1,7 @@
 # cc-plugin-codex
 
+[English](README.en.md) | **简体中文**
+
 一个 Codex **marketplace 仓库**（支持远程 GitHub 安装或本地路径安装），提供 `cc` 插件 —— 让 OpenAI Codex 把代码评审（只读）和编码任务（可写）委派给本机的 Claude Code（`claude` CLI）。
 
 它是 [`openai/codex-plugin-cc`](https://github.com/openai/codex-plugin-cc)（让 Claude Code 调用 Codex）的镜像方向。

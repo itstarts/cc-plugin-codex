@@ -1,5 +1,7 @@
 # cc — 在 Codex 中调用 Claude Code
 
+[English](README.en.md) | **简体中文**
+
 一个 Codex 插件，让 Codex 把代码评审（只读）和编码任务（可写）委派给本机的 Claude Code（`claude` CLI）。它是 `openai/codex-plugin-cc`（让 Claude Code 调用 Codex）的镜像方向。
 
 ## 能力
@@ -24,7 +26,7 @@
 ```bash
 codex plugin marketplace add itstarts/cc-plugin-codex   # 远程拉取本仓库作为 marketplace
 codex plugin add cc@itstarts                             # 安装并启用
-codex plugin list | grep cc                              # 确认: cc@itstarts  installed, enabled  0.3.0
+codex plugin list | grep cc                              # 确认: cc@itstarts  installed, enabled  0.4.0
 ```
 
 marketplace 的名字是 `itstarts`（来自 `marketplace.json` 的 `name`），所以插件 id 始终是 `cc@itstarts`。
@@ -50,6 +52,8 @@ enabled = true
 - 评审当前改动：说「让 Claude Code 评审一下当前改动」即可命中 `cc:review`。可附 `--base main --scope branch` 选择 diff 范围，或后接聚焦点文本。
 - 挑战式评审：说「让 Claude Code 挑战一下这个设计」命中 `cc:adversarial-review`。它质疑实现方向、设计取舍与失败面,而非只挑实现缺陷;target 选择与 `cc:review` 一致,可后接聚焦文本,只读。
 - 委派任务：说「把这个任务交给 Claude Code：……」命中 `cc:delegate`。可附 `--background` 走后台、`--model <alias>`、`--effort <level>`。未指定 `--resume`/`--fresh` 时,若检测到本仓库上一次后台委派的可续线程,会询问续接还是新开。
+
+> 参数严格校验：拼错的 flag、缺值的 `--base`/`--model` 等、误带取值的开关（如 `--fresh=false`）会返回 `invalid_args` 并指明问题 flag，而非被静默忽略。每个子命令只接受对其有意义的 flag（如 `--scope` 仅对 review 类有效）。
 
 ## 评审输出示例
 
