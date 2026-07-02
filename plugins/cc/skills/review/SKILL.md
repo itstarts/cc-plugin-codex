@@ -18,7 +18,7 @@ node "../../scripts/claude-companion.mjs" review <ARGS>
 The path is relative to this `SKILL.md`'s directory (`<plugin>/skills/review/`), so it resolves whether the plugin runs from its repo or the installed cache copy.
 
 Argument rules:
-- `--base <ref>` and `--scope working-tree|branch` select the diff target.
+- `--base <ref>` and `--scope auto|working-tree|branch` select the review target. `auto` is the default: dirty workspaces use working-tree context; clean workspaces use a branch diff against the detected default branch.
 - Free text after flags is treated as an optional review focus.
 - `--background` runs as a Claude background job (use for large reviews); otherwise foreground.
 - `--model <alias>` optionally selects the Claude model.

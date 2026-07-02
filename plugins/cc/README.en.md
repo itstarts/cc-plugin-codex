@@ -4,6 +4,8 @@
 
 A Codex plugin that lets Codex delegate code review (read-only) and coding tasks (write-enabled) to the local Claude Code (`claude` CLI). It is the mirror direction of `openai/codex-plugin-cc` (which lets Claude Code call Codex).
 
+Attribution and reference-project notes are recorded in [NOTICE](NOTICE).
+
 ## Capabilities
 
 - `cc:review`: have Claude Code review the current changes / a given branch / a PR (read-only) and hand structured results back to Codex.
@@ -52,6 +54,8 @@ Trigger with natural language in a Codex session (skills match implicitly by des
 - Review current changes: say "have Claude Code review the current changes" to hit `cc:review`. You can add `--base main --scope branch` to select the diff range, or append focus text.
 - Adversarial review: say "have Claude Code challenge this design" to hit `cc:adversarial-review`. It questions the implementation direction, design tradeoffs, and failure modes rather than only surface defects; target selection matches `cc:review`, you can append focus text, read-only.
 - Delegate a task: say "delegate this task to Claude Code: …" to hit `cc:delegate`. You can add `--background` to run in the background, `--model <alias>`, `--effort <level>`. When neither `--resume` nor `--fresh` is given, if a resumable thread from this repo's last background delegation is detected, it asks whether to resume or start fresh.
+
+`--scope auto` is the review default: dirty workspaces review staged, unstaged, and untracked text files; clean workspaces fall back to the current branch diff against the detected default branch. Use `--scope working-tree` for workspace-only review, or `--scope branch` / `--base <ref>` for branch review.
 
 > Strict argument validation: a misspelled flag, a missing value for `--base`/`--model`/etc., or a switch given a value (e.g. `--fresh=false`) returns `invalid_args` and names the offending flag, rather than being silently ignored. Each subcommand only accepts flags meaningful to it (e.g. `--scope` is valid only for the review commands).
 

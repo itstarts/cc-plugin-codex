@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -32,7 +34,7 @@ test("review --scope 非法枚举返回 invalid_args 并列出可选值", () => 
   const r = spawnSync("node", [entry, "review", "--scope=bogus", "--json"], { encoding: "utf8" });
   const out = JSON.parse(r.stdout);
   assert.equal(out.error.code, "invalid_args");
-  assert.match(out.error.message, /working-tree\|branch/);
+  assert.match(out.error.message, /auto\|working-tree\|branch/);
 });
 
 test("task --model 缺值返回 invalid_args", () => {
@@ -54,4 +56,28 @@ test("布尔开关误带取值返回 invalid_args", () => {
   const out = JSON.parse(r.stdout);
   assert.equal(out.error.code, "invalid_args");
   assert.match(out.error.message, /开关参数不接受取值.*--fresh/);
+});
+
+test("review 无默认分支可检测时返回 config_error 和可操作提示", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "cc-plugin-companion-"));
+  try {
+    let r = spawnSync("git", ["init", "-b", "feature"], { cwd: dir, encoding: "utf8" });
+    assert.equal(r.status, 0, r.stderr);
+    r = spawnSync("git", ["config", "user.email", "test@example.com"], { cwd: dir, encoding: "utf8" });
+    assert.equal(r.status, 0, r.stderr);
+    r = spawnSync("git", ["config", "user.name", "Test User"], { cwd: dir, encoding: "utf8" });
+    assert.equal(r.status, 0, r.stderr);
+    writeFileSync(path.join(dir, "tracked.txt"), "base\n");
+    r = spawnSync("git", ["add", "tracked.txt"], { cwd: dir, encoding: "utf8" });
+    assert.equal(r.status, 0, r.stderr);
+    r = spawnSync("git", ["commit", "-m", "initial"], { cwd: dir, encoding: "utf8" });
+    assert.equal(r.status, 0, r.stderr);
+
+    r = spawnSync("node", [entry, "review", "--json"], { cwd: dir, encoding: "utf8" });
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.error.code, "config_error");
+    assert.match(out.error.message, /--base <ref>|--scope working-tree/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

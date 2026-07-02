@@ -7,9 +7,14 @@ import { transcriptPathFor } from "./lib/transcript.mjs";
 import { renderResult } from "./lib/render.mjs";
 import { parseStopInput, allowDecision, decideFromFindings } from "./lib/gate.mjs";
 import { ERROR_CODES, makeError, makeOk } from "./lib/errors.mjs";
+import { loadPromptTemplate, interpolateTemplate } from "./lib/prompts.mjs";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
  * 运行 claude agents --json --all 并返回结构化结果。
@@ -60,35 +65,18 @@ function buildReviewPrompt(diffText, focus) {
     "Report each issue as a finding with a severity (P0 critical, P1 high, P2 medium, P3 low),",
     "a short title, the file and line when known, and a concrete detail. Add a brief overall summary.",
     "",
-    "=== DIFF ===",
-    diffText || "(empty diff)",
+    "=== REVIEW CONTEXT ===",
+    diffText || "(empty review context)",
   ];
   return parts.filter(Boolean).join("\n");
 }
 
-/**
- * 挑战式（adversarial）评审 prompt：换评审立场，默认怀疑、试图证明改动不该上线，
- * 重点打高代价/难发现的失败面（auth、数据丢失、回滚、竞态、版本漂移等）。
- * 复用与普通 review 相同的 P0–P3 结构化输出契约，立场差异完全体现在 prompt。
- */
 function buildAdversarialPrompt(diffText, focus) {
-  const parts = [
-    "You are performing an ADVERSARIAL code review. Read-only: do not modify files.",
-    "Your job is to break confidence in this change, not to validate it.",
-    "Question the chosen implementation, design choices, tradeoffs, and hidden assumptions —",
-    "not just surface-level defects. Default to skepticism; if something only works on the happy path, treat that as a real weakness.",
-    focus ? `Weight this focus heavily: ${focus}` : "",
-    "Prioritize expensive, dangerous, or hard-to-detect failures:",
-    "auth/permission/trust boundaries; data loss, corruption, irreversible state; rollback/retry/idempotency gaps;",
-    "race conditions and ordering assumptions; empty-state/null/timeout/degraded-dependency behavior; version skew and migration hazards.",
-    "Report only material findings (skip style/naming nits). Use severity P0 critical, P1 high, P2 medium, P3 low,",
-    "a short title, the file and line when known, and a concrete detail with the likely impact and a concrete fix.",
-    "Write the summary as a terse ship/no-ship assessment. If the change is genuinely safe, say so and report no findings.",
-    "",
-    "=== DIFF ===",
-    diffText || "(empty diff)",
-  ];
-  return parts.filter(Boolean).join("\n");
+  const template = loadPromptTemplate(ROOT_DIR, "adversarial-review");
+  return interpolateTemplate(template, {
+    USER_FOCUS: focus || "No extra focus provided.",
+    REVIEW_INPUT: diffText || "(empty review context)",
+  });
 }
 
 /**
@@ -113,8 +101,8 @@ function attachReviewFindings(out) {
  */
 function runForegroundReview(cwd, { scope, base, focus, model, timeoutMs = 0 } = {}) {
   const repoRoot = resolveRepoRoot(cwd);
-  const diff = collectDiff(cwd, { scope: scope ?? "working-tree", base });
-  if (!diff.ok) return makeError(ERROR_CODES.NONZERO_EXIT, "git diff 失败", { stderr: diff.stderr });
+  const diff = collectDiff(cwd, { scope: scope ?? "auto", base });
+  if (!diff.ok) return makeReviewInputError(diff.stderr);
   const prompt = buildReviewPrompt(diff.text, focus);
   // schema 是内置静态资源；加载失败属于打包缺陷，明确报错而非静默降级为自由文本评审
   let schema;
@@ -133,9 +121,14 @@ function cmdReview(rest, cwd, { kind = "review", promptBuilder = buildReviewProm
   const { flags, values, positional } = checked.parsed;
   const json = checked.json;
   const repoRoot = resolveRepoRoot(cwd);
-  const diff = collectDiff(cwd, { scope: values.scope ?? "working-tree", base: values.base });
-  if (!diff.ok) return { out: makeError(ERROR_CODES.NONZERO_EXIT, "git diff 失败", { stderr: diff.stderr }), json };
-  const prompt = promptBuilder(diff.text, positional.join(" "));
+  const diff = collectDiff(cwd, { scope: values.scope ?? "auto", base: values.base });
+  if (!diff.ok) return { out: makeReviewInputError(diff.stderr), json };
+  let prompt;
+  try {
+    prompt = promptBuilder(diff.text, positional.join(" "));
+  } catch (e) {
+    return { out: makeError(ERROR_CODES.TEMPLATE_ERROR, "评审 prompt 模板加载失败，请检查插件安装完整性", { detail: String(e?.message ?? e) }), json };
+  }
   // schema 是内置静态资源；加载失败属于打包缺陷，明确报错而非静默降级为自由文本评审
   let schema;
   try {
@@ -153,6 +146,17 @@ function cmdReview(rest, cwd, { kind = "review", promptBuilder = buildReviewProm
   }
   const args = buildClaudeArgs({ mode: "review", repoRoot, model: values.model, effort: values.effort, schema });
   return { out: attachReviewFindings(runClaudeForeground({ prompt, args, cwd, timeoutMs: 0 })), json };
+}
+
+function makeReviewInputError(stderr) {
+  if (/Unable to detect default branch/.test(stderr ?? "")) {
+    return makeError(
+      ERROR_CODES.CONFIG_ERROR,
+      "无法检测默认分支；请传 --base <ref> 或使用 --scope working-tree",
+      { stderr },
+    );
+  }
+  return makeError(ERROR_CODES.NONZERO_EXIT, "评审上下文采集失败", { stderr });
 }
 
 function cmdTask(rest, cwd) {

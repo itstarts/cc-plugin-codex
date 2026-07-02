@@ -5,6 +5,28 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.5.0] - 2026-07-02
+
+### Added
+
+- **版本元数据一致性检查**：新增 `scripts/check-version.mjs` 与 CI 校验，确保根 `package.json` 和插件 manifest 的版本号保持一致。
+- **NOTICE attribution**：新增根级与插件级 `NOTICE`，明确本项目与参考项 `openai/codex-plugin-cc` 的参考关系和独立实现边界。
+- **挑战式评审 prompt 模板化**：新增 `plugins/cc/prompts/adversarial-review.md` 与模板加载工具，便于维护 adversarial review 的系统提示词。
+- **`--scope auto` 评审目标选择**：dirty workspace 默认评审暂存、未暂存和未跟踪文本文件；clean workspace 默认评审当前分支相对默认分支的差异。
+- **schema/job 后续设计记录**：记录 review schema 与 job state 后续演进方向，当前版本不改变运行时契约。
+
+### Changed
+
+- `cc:review` / `cc:adversarial-review` 的默认评审输入从单一 `git diff HEAD` 扩展为结构化 review context，包含状态、分段 diff、commit log、diff stat 和安全筛选后的未跟踪文件内容。
+- 默认分支检测优先使用 remote HEAD，再按 `origin/main|origin/master|origin/trunk`、本地 `main|master|trunk` 回退。
+- 模板加载失败返回 `template_error`，默认分支检测失败返回 `config_error` 和可操作提示。
+- `collectDiff` 保持旧 `args` 语义兼容，同时复用新的 review context 文本采集。
+
+### Fixed
+
+- 未跟踪文件读取失败、目录、超大文件或二进制文件不再阻断整次评审上下文采集。
+- 文本探测补充 DEL 控制字节判定，降低二进制文件被误纳入 prompt 的概率。
+
 ## [0.4.0] - 2026-06-27
 
 ### Added
@@ -66,6 +88,7 @@
 - `status` / `result` / `cancel` / `setup` 子命令。
 - 中文 README、评审 schema、端到端冒烟验证记录、LICENSE、CI。
 
+[0.5.0]: https://github.com/itstarts/cc-plugin-codex/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/itstarts/cc-plugin-codex/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/itstarts/cc-plugin-codex/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/itstarts/cc-plugin-codex/compare/v0.1.0...v0.2.0

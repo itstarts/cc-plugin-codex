@@ -1,6 +1,6 @@
 {
   "name": "cc-plugin-codex",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "description": "Codex plugin (cc) that lets OpenAI Codex delegate code review and coding tasks to the local Claude Code CLI.",
@@ -14,6 +14,7 @@
     "node": ">=18.18.0"
   },
   "scripts": {
+    "check-version": "node scripts/check-version.mjs --check",
     "test": "node --test"
   }
 }

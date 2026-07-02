@@ -1,5 +1,5 @@
-// review --scope 的合法取值，与 buildDiffArgs 的分支一致（branch 走三点 diff，其余按工作区）
-export const SCOPE_VALUES = Object.freeze(["working-tree", "branch"]);
+// review --scope 的合法取值：auto 根据工作区状态选择目标，branch 走三点 diff。
+export const SCOPE_VALUES = Object.freeze(["auto", "working-tree", "branch"]);
 
 export function parseArgs(argv, spec = {}) {
   const boolSet = new Set(spec.boolean ?? []);
