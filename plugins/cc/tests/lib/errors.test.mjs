@@ -4,8 +4,8 @@ import { ERROR_CODES, makeError, makeOk } from "../../scripts/lib/errors.mjs";
 
 test("错误码集合完整", () => {
   assert.deepEqual(Object.values(ERROR_CODES).sort(), [
-    "auth_required", "invalid_args", "invalid_json", "job_not_found",
-    "missing_cli", "nonzero_exit", "timeout", "transcript_unavailable"
+    "auth_required", "config_error", "invalid_args", "invalid_json", "job_not_found",
+    "missing_cli", "nonzero_exit", "template_error", "timeout", "transcript_unavailable"
   ]);
 });
 

@@ -1,0 +1,10 @@
+cc-plugin-codex
+Copyright 2026 itstarts
+
+This project is an independent Codex plugin implementation that lets Codex
+delegate review and coding tasks to the local Claude Code CLI.
+
+The project is inspired by and designed as the reverse-direction counterpart
+to OpenAI's codex-plugin-cc project, which lets Claude Code invoke Codex.
+This NOTICE does not claim that this repository is published by OpenAI or
+that its implementation files are copied from OpenAI's repository.

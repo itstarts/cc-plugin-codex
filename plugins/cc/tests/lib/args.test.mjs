@@ -82,9 +82,9 @@ test("validateArgs：非法枚举报错并列出可选值", () => {
   const r = parseArgs(["--scope=bogus"], spec);
   const msg = validateArgs(r, { enums: { scope: SCOPE_VALUES } });
   assert.match(msg, /--scope 取值非法: bogus/);
-  assert.match(msg, /working-tree\|branch/);
+  assert.match(msg, /auto\|working-tree\|branch/);
 });
 
-test("SCOPE_VALUES 包含 working-tree 与 branch", () => {
-  assert.deepEqual([...SCOPE_VALUES], ["working-tree", "branch"]);
+test("SCOPE_VALUES 包含 auto、working-tree 与 branch", () => {
+  assert.deepEqual([...SCOPE_VALUES], ["auto", "working-tree", "branch"]);
 });

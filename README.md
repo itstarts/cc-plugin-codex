@@ -6,6 +6,8 @@
 
 它是 [`openai/codex-plugin-cc`](https://github.com/openai/codex-plugin-cc)（让 Claude Code 调用 Codex）的镜像方向。
 
+归属与参考来源说明见 [NOTICE](NOTICE)。
+
 ## 仓库结构
 
 ```
@@ -44,6 +46,8 @@ codex plugin list | grep cc                              # 期望: installed, en
 - `cc:review` —— 让 Claude Code 只读评审当前改动 / 分支 / PR。
 - `cc:adversarial-review` —— 让 Claude Code 做只读的「挑战式」评审：质疑实现方向、设计取舍与隐藏假设，重点打高代价失败面（auth / 数据丢失 / 回滚 / 竞态）。
 - `cc:delegate` —— 把编码任务委派给 Claude Code 执行（可写，限定在仓库内），支持前台/后台作业，可续接上一次委派线程。
+
+`cc:review` 和 `cc:adversarial-review` 默认使用 `--scope auto`：工作区有改动时评审暂存、未暂存和未跟踪文本文件；工作区干净时评审当前分支相对默认分支的差异。
 
 > 与参考项 [`openai/codex-plugin-cc`](https://github.com/openai/codex-plugin-cc) 的差异：参考项的 `transfer`（把会话导成对方可 resume 的线程）依赖对方运行时的「外部 agent 会话导入」能力。镜像方向需要 Claude Code 能导入外部会话，而 Claude Code 当前无此能力（`--resume` 只认自身 session），故本插件未镜像该命令。
 

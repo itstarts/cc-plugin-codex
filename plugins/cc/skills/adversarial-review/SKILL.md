@@ -18,7 +18,7 @@ node "../../scripts/claude-companion.mjs" adversarial-review <ARGS>
 The path is relative to this `SKILL.md`'s directory (`<plugin>/skills/adversarial-review/`), so it resolves whether the plugin runs from its repo or the installed cache copy.
 
 Argument rules:
-- `--base <ref>` and `--scope working-tree|branch` select the diff target (same as `cc:review`).
+- `--base <ref>` and `--scope auto|working-tree|branch` select the review target (same as `cc:review`). `auto` is the default: dirty workspaces use working-tree context; clean workspaces use a branch diff against the detected default branch.
 - Free text after flags is treated as a focus area and is weighted heavily.
 - `--background` runs as a Claude background job (recommended for multi-file changes); otherwise foreground.
 - `--model <alias>` / `--effort <level>` optionally tune the run.

@@ -14,5 +14,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - name: Check version metadata
+        run: npm run check-version
+
       - name: Run tests
         run: npm test

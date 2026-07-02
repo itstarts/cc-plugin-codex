@@ -6,6 +6,8 @@ A Codex **marketplace repository** (installable remotely from GitHub or from a l
 
 It is the mirror direction of [`openai/codex-plugin-cc`](https://github.com/openai/codex-plugin-cc) (which lets Claude Code call Codex).
 
+Attribution and reference-project notes are recorded in [NOTICE](NOTICE).
+
 ## Repository layout
 
 ```
@@ -44,6 +46,8 @@ Version history is in **[CHANGELOG.md](CHANGELOG.md)**.
 - `cc:review` — have Claude Code review the current changes / a branch / a PR, read-only.
 - `cc:adversarial-review` — have Claude Code run a read-only "adversarial" review: question the implementation direction, design tradeoffs, and hidden assumptions, focusing on high-cost failure modes (auth / data loss / rollback / race conditions).
 - `cc:delegate` — delegate a coding task to Claude Code (write-enabled, scoped to the repo), with foreground/background jobs and the ability to resume the previous delegation thread.
+
+`cc:review` and `cc:adversarial-review` default to `--scope auto`: dirty workspaces review staged, unstaged, and untracked text files; clean workspaces review the current branch against the detected default branch.
 
 > Difference from the reference project [`openai/codex-plugin-cc`](https://github.com/openai/codex-plugin-cc): its `transfer` (exporting a session into a thread the other side can resume) relies on the other runtime's "import external agent session" capability. The mirror direction would need Claude Code to import an external session, which Claude Code currently cannot do (`--resume` only recognizes its own sessions), so this plugin does not mirror that command.
 
